@@ -250,6 +250,50 @@ void CopyFrame(AVFrame *pFrame, FrameCanvas *canvas,
   }
 }
 
+void CopyFrame2(XImage *pXimage, FrameCanvas *canvas,
+               int width, int height) {
+
+char * tempData;
+int biBitCount =32;
+int dwBmpSize = ((pXimage->width * biBitCount + 31) / 32) * 4 * pXimage->height;
+
+tempData = (char*)malloc(dwBmpSize);
+
+
+for(int h=0; h < pXimage->height; h++)
+{
+  for(int w=0; w < pXimage->width; w++)
+  {
+    int indexB = (h*pXimage->width + w)*4;
+    int indexG = (h*pXimage->width + w)*4+1;
+    int indexR = (h*pXimage->width + w)*4+2;
+
+    tempData[((pXimage->height-1-h)*pXimage->width + w) * 4] = pXimage->data[indexB];
+    tempData[((pXimage->height-1-h)*pXimage->width + w) * 4+1] = pXimage->data[indexG];
+    tempData[((pXimage->height-1-h)*pXimage->width + w) * 4+2] = pXimage->data[indexR];
+   
+ 
+  }	
+}
+
+for(int h=0; h < pXimage->height; h++)
+{
+  for(int w=0; w < pXimage->width; w++)
+  {
+    int indexB = (h*pXimage->width + w)*4;
+    int indexG = (h*pXimage->width + w)*4+1;
+    int indexR = (h*pXimage->width + w)*4+2;
+
+ 
+    canvas->SetPixel(w, h, tempData[indexR], tempData[indexG], tempData[indexB]);
+  
+  }	
+}
+
+
+}
+
+
 // Scale "width" and "height" to fit within target rectangle of given size.
 void ScaleToFitKeepAscpet(int fit_in_width, int fit_in_height,
                           int *width, int *height) {
@@ -649,20 +693,26 @@ int main(int argc, char *argv[]) {
            saveXImageToBitmap(img);
 	   printf("image saved\n");
            //save image here
+
+           CopyFrame2(img, offscreen_canvas,
+                      display_width, display_height);
         }
 
 		    
 		    
 		    
-          CopyFrame(output_frame, offscreen_canvas,
+         /* CopyFrame(output_frame, offscreen_canvas,
                     display_offset_x, display_offset_y,
-                    display_width, display_height);
+                    display_width, display_height);*/
           frame_count++;
           frames_left--;
           if (stream_writer) {
+	  printf("stream writer\n");
             if (verbose) fprintf(stderr, "%6ld", frame_count);
             stream_writer->Stream(*offscreen_canvas, frame_wait_nanos/1000);
           } else {
+	  
+	  	  printf("Swap on vsync\n");
             offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                    vsync_multiple);
           }
