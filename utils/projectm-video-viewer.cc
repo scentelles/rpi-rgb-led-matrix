@@ -387,7 +387,7 @@ int main(int argc, char *argv[]) {
   bool maintain_aspect_ratio = true;
   bool verbose = false;
   bool forever = false;
-  int stream_output_fd = -1;
+
   unsigned int frame_skip = 0;
   unsigned int framecount_limit = UINT_MAX;  // even at 60fps, that is > 2yrs
 
@@ -400,13 +400,7 @@ int main(int argc, char *argv[]) {
     case 'f':
       forever = true;
       break;
-    case 'O':
-      stream_output_fd = open(optarg, O_CREAT|O_TRUNC|O_WRONLY, 0644);
-      if (stream_output_fd < 0) {
-        perror("Couldn't open output stream");
-        return 1;
-      }
-      break;
+
     case 'L':
       fprintf(stderr, "-L is deprecated. Use\n\t--led-pixel-mapper=\"U-mapper\" --led-chain=4\ninstead.\n");
       return 1;
@@ -473,7 +467,7 @@ int main(int argc, char *argv[]) {
   if (verbose) av_dump_format(pFormatCtx, 0, movie_file, 0);
 
   long frame_count = 0;
-  runtime_opt.do_gpio_init = (stream_output_fd < 0);
+//  runtime_opt.do_gpio_init = (stream_output_fd < 0);
   RGBMatrix *matrix = CreateMatrixFromOptions(matrix_options, runtime_opt);
   if (matrix == NULL) {
     return 1;
@@ -481,15 +475,8 @@ int main(int argc, char *argv[]) {
 
   FrameCanvas *offscreen_canvas = matrix->CreateFrameCanvas();
   StreamIO *stream_io = NULL;
-  StreamWriter *stream_writer = NULL;
-  if (stream_output_fd >= 0) {
-    stream_io = new rgb_matrix::FileStreamIO(stream_output_fd);
-    stream_writer = new StreamWriter(stream_io);
-    if (forever) {
-      fprintf(stderr, "-f (forever) doesn't make sense with -O; disabling\n");
-      forever = false;
-    }
-  }
+
+
   // Find the first video stream
   videoStream=-1;
   for (i=0; i < (int)pFormatCtx->nb_streams; ++i) {
@@ -559,21 +546,8 @@ int main(int argc, char *argv[]) {
   avpicture_fill((AVPicture *)output_frame, output_buffer, AV_PIX_FMT_RGB24,
                  display_width, display_height);
 
-  if (verbose) {
-    fprintf(stderr, "Scaling %dx%d -> %dx%d; black border x:%d y:%d\n",
-            pCodecCtx->width, pCodecCtx->height,
-            display_width, display_height,
-            display_offset_x, display_offset_y);
-  }
 
-  // initialize SWS context for software scaling
-  SwsContext *const sws_ctx = CreateSWSContext(pCodecCtx,
-                                               display_width, display_height);
-  if (!sws_ctx) {
-    fprintf(stderr, "Trouble doing scaling to %dx%d :(\n",
-            matrix->width(), matrix->height());
-    return 1;
-  }
+
 
   signal(SIGTERM, InterruptHandler);
   signal(SIGINT, InterruptHandler);
@@ -664,65 +638,38 @@ int main(int argc, char *argv[]) {
       avcodec_flush_buffers(pCodecCtx);
     }
     clock_gettime(CLOCK_MONOTONIC, &next_frame);
-    while (!interrupt_received && av_read_frame(pFormatCtx, &packet) >= 0
-           && frames_left > 0) {
-      // Is this a packet from the video stream?
-      if (packet.stream_index==videoStream) {
-        // Determine absolute end of this frame now so that we don't include
-        // decoding overhead. TODO: skip frames if getting too slow ?
-        add_nanos(&next_frame, frame_wait_nanos);
-
-        // Decode video frame
-        avcodec_decode_video2(pCodecCtx, decode_frame, &frameFinished, &packet);
-
-        if (frames_to_skip) { frames_to_skip--; continue; }
-
-        // Did we get a video frame?
-        if (frameFinished) {
-          // Convert the image from its native format to RGB
-          sws_scale(sws_ctx, (uint8_t const * const *)decode_frame->data,
-                    decode_frame->linesize, 0, pCodecCtx->height,
-                    output_frame->data, output_frame->linesize);
-		    
-		    
+    while (!interrupt_received) {
+ 	    
 		    
         XImage *img = XGetImage(display,target,0,0,width,height,XAllPlanes(),ZPixmap);
 
         if (img != NULL)
         {
-           saveXImageToBitmap(img);
-	   printf("image saved\n");
+           //saveXImageToBitmap(img);
+	  // printf("image saved\n");
            //save image here
-
+           printf("copying\n");
            CopyFrame2(img, offscreen_canvas,
-                      display_width, display_height);
+                      display_width, display_height); 
+		      
+
         }
 
-		    
-		    
 		    
          /* CopyFrame(output_frame, offscreen_canvas,
                     display_offset_x, display_offset_y,
                     display_width, display_height);*/
-          frame_count++;
-          frames_left--;
-          if (stream_writer) {
-	  printf("stream writer\n");
-            if (verbose) fprintf(stderr, "%6ld", frame_count);
-            stream_writer->Stream(*offscreen_canvas, frame_wait_nanos/1000);
-          } else {
-	  
-	  	  printf("Swap on vsync\n");
+
             offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                    vsync_multiple);
-          }
-        }
-        if (!stream_writer && !use_vsync_for_frame_timing) {
+       
+        
+        if (!use_vsync_for_frame_timing) {
           clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_frame, NULL);
         }
-      }
+      
       // Free the packet that was allocated by av_read_frame
-      av_free_packet(&packet);
+     // av_free_packet(&packet);
     }
   } while (forever && !interrupt_received);
 
@@ -745,7 +692,7 @@ int main(int argc, char *argv[]) {
   // Close the video file
   avformat_close_input(&pFormatCtx);
 
-  delete stream_writer;
+
   delete stream_io;
   fprintf(stderr, "Total of %ld frames decoded\n", frame_count);
 
