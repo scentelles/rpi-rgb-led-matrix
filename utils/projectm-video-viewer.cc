@@ -1,42 +1,8 @@
 // -*- mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; -*-
 //
-// Quick hack based on ffmpeg
-// tutorial http://dranger.com/ffmpeg/tutorial01.html
-// in turn based on a tutorial by
-// Martin Bohme (boehme@inb.uni-luebeckREMOVETHIS.de)
-//
-// HELP NEEDED
-// Note, this is known to not be optimal, causing flicker etc. It is at this
-// point merely a demonstration of what is possible. It also serves as a
-// converter to a 'stream' (-O option) which then can be played quickly with
-// the led-image-viewer.
-//
-// Pull requests are welcome to address
-//    * Ancient code: this is based on a very old ffmpeg demo. The API probably
-//      evolved over time.
-//    * Use hardware acceleration if possible. The Pi does have some
-//      acceleration features IIRC, so if we could use these, that would be
-//      great.
-//    * Other improvements that could reduce the flicker on a Raspberry Pi.
-//      Currently it seems to create flicker in particular when decoding larger
-//      videos due to memory bandwidth overload (?). Might already be fixed
-//      with using hardware acceleration.
-//    * Add sound ? Right now, we don't decode the sound. It is usually
-//      not very useful as the builtin-sound is disabled when running the
-//      LED matrix, but if there is an external USB sound adapter, it might
-//      be nice.
 
 
 
-// Ancient AV versions forgot to set this.
-#define __STDC_CONSTANT_MACROS
-
-// libav: "U NO extern C in header ?"
-extern "C" {
-#  include <libavcodec/avcodec.h>
-#  include <libavformat/avformat.h>
-#  include <libswscale/swscale.h>
-}
 
 #include <fcntl.h>
 #include <getopt.h>
@@ -54,7 +20,6 @@ extern "C" {
 
 
 
-//#========================================================================
 #include <string>
 #include <cstring>
 #include<stdio.h>
@@ -230,28 +195,14 @@ static void InterruptHandler(int) {
   interrupt_received = true;
 }
 
-// compatibility with newer API
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(55,28,1)
-#  define av_frame_alloc avcodec_alloc_frame
-#  define av_frame_free avcodec_free_frame
-#endif
+
 
 struct LedPixel {
   uint8_t r, g, b;
 };
-void CopyFrame(AVFrame *pFrame, FrameCanvas *canvas,
-               int offset_x, int offset_y,
-               int width, int height) {
-  for (int y = 0; y < height; ++y) {
-    LedPixel *pix = (LedPixel*) (pFrame->data[0] + y*pFrame->linesize[0]);
-    for (int x = 0; x < width; ++x, ++pix) {
-      canvas->SetPixel(x + offset_x, y + offset_y, pix->r, pix->g, pix->b);
-    }
-  }
-}
 
-void CopyFrame2(XImage *pXimage, FrameCanvas *canvas,
-               int width, int height) {
+
+void CopyFrame(XImage *pXimage, FrameCanvas *canvas) {
 
 char * tempData;
 int biBitCount =32;
@@ -272,10 +223,11 @@ for(int h=0; h < pXimage->height; h++)
     tempData[((pXimage->height-1-h)*pXimage->width + w) * 4+1] = pXimage->data[indexG];
     tempData[((pXimage->height-1-h)*pXimage->width + w) * 4+2] = pXimage->data[indexR];
    
- 
+     canvas->SetPixel(w, h, pXimage->data[indexR], pXimage->data[indexG], pXimage->data[indexB]);
+
   }	
 }
-
+/*
 for(int h=0; h < pXimage->height; h++)
 {
   for(int w=0; w < pXimage->width; w++)
@@ -288,21 +240,9 @@ for(int h=0; h < pXimage->height; h++)
     canvas->SetPixel(w, h, tempData[indexR], tempData[indexG], tempData[indexB]);
   
   }	
-}
+}*/
 
 
-}
-
-
-// Scale "width" and "height" to fit within target rectangle of given size.
-void ScaleToFitKeepAscpet(int fit_in_width, int fit_in_height,
-                          int *width, int *height) {
-  if (*height < fit_in_height && *width < fit_in_width) return; // Done.
-  const float height_ratio = 1.0 * (*height) / fit_in_height;
-  const float width_ratio  = 1.0 * (*width) / fit_in_width;
-  const float ratio = (height_ratio > width_ratio) ? height_ratio : width_ratio;
-  *width = roundf(*width / ratio);
-  *height = roundf(*height / ratio);
 }
 
 static int usage(const char *progname, const char *msg = nullptr) {
@@ -335,44 +275,6 @@ static void add_nanos(struct timespec *accumulator, long nanoseconds) {
   }
 }
 
-// Convert deprecated color formats to new and manually set the color range.
-// YUV has funny ranges (16-235), while the YUVJ are 0-255. SWS prefers to
-// deal with the YUV range, but then requires to set the output range.
-// https://libav.org/documentation/doxygen/master/pixfmt_8h.html#a9a8e335cf3be472042bc9f0cf80cd4c5
-SwsContext *CreateSWSContext(const AVCodecContext *codec_ctx,
-                             int display_width, int display_height) {
-  AVPixelFormat pix_fmt;
-  bool src_range_extended_yuvj = true;
-  // Remap deprecated to new pixel format.
-  switch (codec_ctx->pix_fmt) {
-  case AV_PIX_FMT_YUVJ420P: pix_fmt = AV_PIX_FMT_YUV420P; break;
-  case AV_PIX_FMT_YUVJ422P: pix_fmt = AV_PIX_FMT_YUV422P; break;
-  case AV_PIX_FMT_YUVJ444P: pix_fmt = AV_PIX_FMT_YUV444P; break;
-  case AV_PIX_FMT_YUVJ440P: pix_fmt = AV_PIX_FMT_YUV440P; break;
-  default:
-    src_range_extended_yuvj = false;
-    pix_fmt = codec_ctx->pix_fmt;
-  }
-  SwsContext *swsCtx = sws_getContext(codec_ctx->width, codec_ctx->height,
-                                      pix_fmt,
-                                      display_width, display_height,
-                                      AV_PIX_FMT_RGB24, SWS_BILINEAR,
-                                      NULL, NULL, NULL);
-  if (src_range_extended_yuvj) {
-    // Manually set the source range to be extended. Read modify write.
-    int dontcare[4];
-    int src_range, dst_range;
-    int brightness, contrast, saturation;
-    sws_getColorspaceDetails(swsCtx, (int**)&dontcare, &src_range,
-                             (int**)&dontcare, &dst_range, &brightness,
-                             &contrast, &saturation);
-    const int* coefs = sws_getCoefficients(SWS_CS_DEFAULT);
-    src_range = 1;  // New src range.
-    sws_setColorspaceDetails(swsCtx, coefs, src_range, coefs, dst_range,
-                             brightness, contrast, saturation);
-  }
-  return swsCtx;
-}
 
 int main(int argc, char *argv[]) {
   RGBMatrix::Options matrix_options;
@@ -431,42 +333,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (optind >= argc) {
-    fprintf(stderr, "Expected video filename.\n");
-    return usage(argv[0]);
-  }
 
-  // Initalizing these to NULL prevents segfaults!
-  AVFormatContext   *pFormatCtx = NULL;
-  int               i, videoStream;
-  AVCodecContext    *pCodecCtxOrig = NULL;
-  AVCodecContext    *pCodecCtx = NULL;
-  AVCodec           *pCodec = NULL;
-  AVPacket          packet;
-  int               frameFinished;
 
-  const char *movie_file = argv[optind];
-  if (strcmp(movie_file, "-") == 0) {
-    movie_file = "/dev/stdin";
-  }
 
-  // Register all formats and codecs
-  av_register_all();
-  avformat_network_init();
 
-  if (avformat_open_input(&pFormatCtx, movie_file, NULL, NULL) != 0) {
-    perror("Issue opening file: ");
-    return -1;
-  }
-
-  if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
-    fprintf(stderr, "Couldn't find stream information\n");
-    return -1;
-  }
-
-  if (verbose) av_dump_format(pFormatCtx, 0, movie_file, 0);
-
-  long frame_count = 0;
 //  runtime_opt.do_gpio_init = (stream_output_fd < 0);
   RGBMatrix *matrix = CreateMatrixFromOptions(matrix_options, runtime_opt);
   if (matrix == NULL) {
@@ -477,82 +347,12 @@ int main(int argc, char *argv[]) {
   StreamIO *stream_io = NULL;
 
 
-  // Find the first video stream
-  videoStream=-1;
-  for (i=0; i < (int)pFormatCtx->nb_streams; ++i) {
-    if (pFormatCtx->streams[i]->codec->codec_type==AVMEDIA_TYPE_VIDEO) {
-      videoStream=i;
-      break;
-    }
-  }
-  if (videoStream == -1)
-    return -1; // Didn't find a video stream
-
-  // Get a pointer to the codec context for the video stream
-  pCodecCtxOrig = pFormatCtx->streams[videoStream]->codec;
-  double fps = av_q2d(pFormatCtx->streams[videoStream]->avg_frame_rate);
-  if (fps < 0) {
-    fps = 1.0 / av_q2d(pFormatCtx->streams[videoStream]->codec->time_base);
-  }
-  if (verbose) fprintf(stderr, "FPS: %f\n", fps);
-
-  // Find the decoder for the video stream
-  pCodec=avcodec_find_decoder(pCodecCtxOrig->codec_id);
-  if (pCodec==NULL) {
-    fprintf(stderr, "Unsupported codec!\n");
-    return -1;
-  }
-  // Copy context
-  pCodecCtx = avcodec_alloc_context3(pCodec);
-  if (avcodec_copy_context(pCodecCtx, pCodecCtxOrig) != 0) {
-    fprintf(stderr, "Couldn't copy codec context");
-    return -1;
-  }
-
-  // Open codec
-  if (avcodec_open2(pCodecCtx, pCodec, NULL)<0)
-    return -1;
-
-
-  /*
-   * Prepare frame to hold the scaled target frame to be send to matrix.
-   */
-  AVFrame *output_frame = av_frame_alloc();  // Target frame for output
-  int display_width = pCodecCtx->width;
-  int display_height = pCodecCtx->height;
-  if (maintain_aspect_ratio) {
-    display_width = pCodecCtx->width;
-    display_height = pCodecCtx->height;
-    // Make display fit within canvas.
-    ScaleToFitKeepAscpet(matrix->width(), matrix->height(),
-                         &display_width, &display_height);
-  } else {
-    display_width = matrix->width();
-    display_height = matrix->height();
-  }
-  // Letterbox or pillarbox black bars.
-  const int display_offset_x = (matrix->width() - display_width)/2;
-  const int display_offset_y = (matrix->height() - display_height)/2;
-
-  // Allocate buffer to meet output size requirements
-  const size_t output_size = avpicture_get_size(AV_PIX_FMT_RGB24,
-                                                display_width,
-                                                display_height);
-  uint8_t *output_buffer = (uint8_t *) av_malloc(output_size);
-
-  // Assign appropriate parts of buffer to image planes in output_frame.
-  // Note that output_frame is an AVFrame, but AVFrame is a superset
-  // of AVPicture
-  avpicture_fill((AVPicture *)output_frame, output_buffer, AV_PIX_FMT_RGB24,
-                 display_width, display_height);
-
 
 
 
   signal(SIGTERM, InterruptHandler);
   signal(SIGINT, InterruptHandler);
 
-  const long frame_wait_nanos = 1e9 / fps;
   struct timespec next_frame;
 
 
@@ -574,21 +374,19 @@ int main(int argc, char *argv[]) {
    int height = gwa.height;
 
 
-
-
     Window *list;
     char *name;
-   unsigned long len;
-     int j;  
-     int projectMWindowId = -1;
-        list = (Window*)getWindowList(display,&len);
+    unsigned long len;
+    int j;  
+    int projectMWindowId = -1;
+    
+    list = (Window*)getWindowList(display,&len);
+    
     for (j=0;j<(int)len;j++) {
         name = getWindowName(display,list[j]);
         cout << j << ": " << name << endl;
-
 	
 	std::size_t found = std::string(name).find(std::string("projectM"));
-	printf("FOUND : %d\n", found);
 	if(found != std::string::npos)
 	{
 	  printf("ProjectM window ID is : %d\n", j);
@@ -596,13 +394,12 @@ int main(int argc, char *argv[]) {
 	}
 	else
 	{
-	  printf("not found\n");
+	  printf("Error : ProjectM window not found\n");
+	  
 	}
-	
-	        free(name);
+        free(name);
 	
         }
-
 
 
 
@@ -611,32 +408,13 @@ int main(int argc, char *argv[]) {
         width = gwa.width;
         height = gwa.height;
 
-        XImage *img = XGetImage(display,target,0,0,width,height,XAllPlanes(),ZPixmap);
-
-        if (img != NULL)
-        {
-           saveXImageToBitmap(img);
-	   printf("image saved\n");
-           //save image here
-        }
-
 
 //#==================================
 
 
 
-
-
-
-
-  AVFrame *decode_frame = av_frame_alloc();  // Decode video into this
   do {
-    unsigned int frames_left = framecount_limit;
-    unsigned int frames_to_skip = frame_skip;
-    if (forever) {
-      av_seek_frame(pFormatCtx, videoStream, 0, AVSEEK_FLAG_ANY);
-      avcodec_flush_buffers(pCodecCtx);
-    }
+
     clock_gettime(CLOCK_MONOTONIC, &next_frame);
     while (!interrupt_received) {
  	    
@@ -646,32 +424,20 @@ int main(int argc, char *argv[]) {
         if (img != NULL)
         {
            //saveXImageToBitmap(img);
-	  // printf("image saved\n");
-           //save image here
-           printf("copying\n");
-           CopyFrame2(img, offscreen_canvas,
-                      display_width, display_height); 
-		      
+           //printf("copying\n");
+           CopyFrame(img, offscreen_canvas); 
+     
 
         }
 
-		    
-         /* CopyFrame(output_frame, offscreen_canvas,
-                    display_offset_x, display_offset_y,
-                    display_width, display_height);*/
-
-            offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
+        offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                    vsync_multiple);
-       
-        
-        if (!use_vsync_for_frame_timing) {
-          clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_frame, NULL);
-        }
-      
-      // Free the packet that was allocated by av_read_frame
-     // av_free_packet(&packet);
+
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_frame, NULL);
+
+
     }
-  } while (forever && !interrupt_received);
+  } while (!interrupt_received);
 
   if (interrupt_received) {
     // Feedback for Ctrl-C, but most importantly, force a newline
@@ -681,20 +447,7 @@ int main(int argc, char *argv[]) {
 
   delete matrix;
 
-  av_free(output_buffer);
-  av_frame_free(&output_frame);
-  av_frame_free(&decode_frame);
 
-  // Close the codecs
-  avcodec_close(pCodecCtx);
-  avcodec_close(pCodecCtxOrig);
-
-  // Close the video file
-  avformat_close_input(&pFormatCtx);
-
-
-  delete stream_io;
-  fprintf(stderr, "Total of %ld frames decoded\n", frame_count);
 
   return 0;
 }
