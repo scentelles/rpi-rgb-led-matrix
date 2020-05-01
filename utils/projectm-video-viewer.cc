@@ -193,6 +193,7 @@ using rgb_matrix::StreamIO;
 volatile bool interrupt_received = false;
 static void InterruptHandler(int) {
   interrupt_received = true;
+
 }
 
 
@@ -241,10 +242,11 @@ for(int h=0; h < pXimage->height; h++)
   
   }	
 }*/
-
+  delete(tempData);
 
 }
 
+//TODO : update usage
 static int usage(const char *progname, const char *msg = nullptr) {
   if (msg) {
     fprintf(stderr, "%s\n", msg);
@@ -353,6 +355,7 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, InterruptHandler);
   signal(SIGINT, InterruptHandler);
 
+
   struct timespec next_frame;
 
 
@@ -415,11 +418,12 @@ int main(int argc, char *argv[]) {
 
   do {
 
-    clock_gettime(CLOCK_MONOTONIC, &next_frame);
+  //  clock_gettime(CLOCK_MONOTONIC, &next_frame);
     while (!interrupt_received) {
  	    
-		    
+	    
         XImage *img = XGetImage(display,target,0,0,width,height,XAllPlanes(),ZPixmap);
+
 
         if (img != NULL)
         {
@@ -427,14 +431,17 @@ int main(int argc, char *argv[]) {
            //printf("copying\n");
            CopyFrame(img, offscreen_canvas); 
      
-
+           XDestroyImage(img);
         }
+	else
+	{
+	  cout << "Error : could not get Ximage";
+	}
 
         offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                    vsync_multiple);
 
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_frame, NULL);
-
+       
 
     }
   } while (!interrupt_received);
