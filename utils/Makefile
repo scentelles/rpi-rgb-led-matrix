@@ -12,7 +12,8 @@ RGB_INCDIR=$(RGB_LIB_DISTRIBUTION)/include
 RGB_LIBDIR=$(RGB_LIB_DISTRIBUTION)/lib
 RGB_LIBRARY_NAME=rgbmatrix
 RGB_LIBRARY=$(RGB_LIBDIR)/lib$(RGB_LIBRARY_NAME).a
-LDFLAGS+=-L$(RGB_LIBDIR) -l$(RGB_LIBRARY_NAME) -lrt -lm -lpthread -lX11
+
+LDFLAGS+=-L$(RGB_LIBDIR) -l$(RGB_LIBRARY_NAME) -lrt -lm -lpthread -lX11 
 
 # Imagemagic flags, only needed if actually compiled.
 MAGICK_CXXFLAGS?=`GraphicsMagick++-config --cppflags --cxxflags`
