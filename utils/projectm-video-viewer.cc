@@ -54,7 +54,11 @@ using namespace oscpkt;
 
 
 const int PORT_NUM = 5005;
-        Window target = 0;
+        Window targetVideo = 0;
+        Window targetProjectM = 0;
+        Window currentTarget = 0;
+	
+	
     Display *display;
 	Window winRoot = 0;
 
@@ -167,13 +171,16 @@ void stopVideo()
 	mplayerStarted =  false;
 
 	cout << "sending keypress" << endl;
-	XSelectInput(display, target, KeyPressMask|KeyReleaseMask);
+	XSetInputFocus(display, targetProjectM, false, CurrentTime);
+	XSelectInput(display, targetProjectM, KeyPressMask|KeyReleaseMask);
 		
 	// Send a fake key press event to the window.
-	XKeyEvent event = createKeyEvent(display, target, winRoot, true, KEYCODE, 0);
+
+	XKeyEvent event = createKeyEvent(display, targetProjectM, winRoot, true, KEYCODE, 0);
 	XSendEvent(event.display, event.window, True, KeyPressMask, (XEvent *)&event);
 
 	XFlush(display) ;
+	XSync(display, false);
 
 }
 
@@ -184,7 +191,7 @@ void startVideo(int id)
 	if(mplayerStarted == false)
 	{
       		std::string command = "./startVideo.sh " + std::to_string(id);
-     	 	system(command.c_str());
+     	 	//system(command.c_str());
       		mplayerStarted =  true;
 	}
 	else
@@ -206,14 +213,14 @@ void startProjectM(int id)
 
  // system("./startVideo.sh ");
 
-        target = getWindowFromName(display, "projectM");
-	
-
+        targetProjectM = getWindowFromName(display, "projectM");
         XWindowAttributes gwa;
-        XGetWindowAttributes(display, target, &gwa);
+        XGetWindowAttributes(display, targetProjectM, &gwa);
         width = gwa.width;
         height = gwa.height;
 	projectMStarted =  true;
+
+
 
 }
 
@@ -417,8 +424,16 @@ int main(int argc, char *argv[]) {
  
 	if(count > UPDATE_MULTIPLE and (mplayerStarted == true or projectMStarted == true))
 	{    
+		if(mplayerStarted == true){
+		  currentTarget = targetVideo;
+		}
+		else
+		{
+		  currentTarget = targetProjectM;
+		}
+
 		count = 0;
- 		XImage *img = XGetImage(display,target,0,0,width,height,XAllPlanes(),ZPixmap);
+ 		XImage *img = XGetImage(display,currentTarget,0,0,width,height,XAllPlanes(),ZPixmap);
  
         	if (img != NULL)
         	{
@@ -433,9 +448,9 @@ int main(int argc, char *argv[]) {
 		  cout << "Error : could not get Ximage. Trying to find proper Window";
 		  if(mplayerStarted == true)
 		  {
-                     	target = getWindowFromName(display, "MPlayer");
+                     	targetVideo = getWindowFromName(display, "MPlayer");
 			XWindowAttributes gwa;
-       	 		XGetWindowAttributes(display, target, &gwa);
+       	 		XGetWindowAttributes(display, targetVideo, &gwa);
         		width = gwa.width;
         		height = gwa.height;
 	
