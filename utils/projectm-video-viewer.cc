@@ -170,13 +170,16 @@ void stopVideo()
 
 	mplayerStarted =  false;
 
+	//Need to declare this here, else it causes weird Xlib failure...
+	XKeyEvent event = createKeyEvent(display, currentTarget, winRoot, true, KEYCODE, 0);
+
+
 	cout << "sending keypress" << endl;
-	XSetInputFocus(display, targetProjectM, false, CurrentTime);
-	XSelectInput(display, targetProjectM, KeyPressMask|KeyReleaseMask);
+	//XSetInputFocus(display, currentTarget, false, CurrentTime);
+	XSelectInput(display, currentTarget, KeyPressMask|KeyReleaseMask);
 		
 	// Send a fake key press event to the window.
 
-	XKeyEvent event = createKeyEvent(display, targetProjectM, winRoot, true, KEYCODE, 0);
 	XSendEvent(event.display, event.window, True, KeyPressMask, (XEvent *)&event);
 
 	XFlush(display) ;
@@ -191,7 +194,7 @@ void startVideo(int id)
 	if(mplayerStarted == false)
 	{
       		std::string command = "./startVideo.sh " + std::to_string(id);
-     	 	//system(command.c_str());
+     	 	system(command.c_str());
       		mplayerStarted =  true;
 	}
 	else
@@ -206,7 +209,19 @@ void startVideo(int id)
 	}
 }
 
+void switchTargets() 
+{
+	cout << "switching targets" << endl;
+	if((mplayerStarted == true) && (projectMStarted == true))
+	{
+		if(currentTarget == targetVideo)
+			currentTarget = targetProjectM;
+		else
+			currentTarget = targetVideo;
 
+	}
+
+}
 
 void startProjectM(int id) 
 {
@@ -219,7 +234,7 @@ void startProjectM(int id)
         width = gwa.width;
         height = gwa.height;
 	projectMStarted =  true;
-
+	currentTarget = targetProjectM;
 
 
 }
@@ -258,9 +273,14 @@ void runOSCServer() {
 	  	startVideo(iarg);
 		continue;
 	  }
-	  if (iarg >=10)
+	  if (iarg ==10)
 	  {
 	   	startProjectM(iarg);
+	  	continue;
+	  }
+	  if (iarg ==11)
+	  {
+	   	switchTargets();
 	  	continue;
 	  }
 	  //else {
@@ -424,13 +444,6 @@ int main(int argc, char *argv[]) {
  
 	if(count > UPDATE_MULTIPLE and (mplayerStarted == true or projectMStarted == true))
 	{    
-		if(mplayerStarted == true){
-		  currentTarget = targetVideo;
-		}
-		else
-		{
-		  currentTarget = targetProjectM;
-		}
 
 		count = 0;
  		XImage *img = XGetImage(display,currentTarget,0,0,width,height,XAllPlanes(),ZPixmap);
@@ -453,6 +466,8 @@ int main(int argc, char *argv[]) {
        	 		XGetWindowAttributes(display, targetVideo, &gwa);
         		width = gwa.width;
         		height = gwa.height;
+			
+			currentTarget = targetVideo;
 	
 		  }
 		}
