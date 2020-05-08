@@ -172,6 +172,8 @@ void stopVideo()
 	// Send a fake key press event to the window.
 	XKeyEvent event = createKeyEvent(display, target, winRoot, true, KEYCODE, 0);
 	XSendEvent(event.display, event.window, True, KeyPressMask, (XEvent *)&event);
+	XSendEvent(event.display, event.window, True, KeyPressMask, (XEvent *)&event);
+	XSendEvent(event.display, event.window, True, KeyPressMask, (XEvent *)&event);
 
 
 }
@@ -239,6 +241,10 @@ void runOSCServer() {
           //  sock.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
           if(iarg == 0){
 	  	stopVideo();
+		if(projectMStarted == true)
+		{
+		   startProjectM(1);
+		}
 		continue;
 	  }
 	  if (iarg < 10)
