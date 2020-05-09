@@ -216,6 +216,7 @@ typedef enum { OK_NO_ERROR=0,
    @endcode
 */
 class Message {
+public:  
   TimeTag time_tag;
   std::string address;
   std::string type_tags;
