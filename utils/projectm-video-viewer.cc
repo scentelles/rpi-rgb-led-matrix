@@ -55,20 +55,22 @@ using namespace oscpkt;
 
 
 const int PORT_NUM = 7700;
-        Window targetVideo = 0;
-        Window targetProjectM = 0;
-        Window currentTarget = 0;
+        Window windowChannel2 = 0;
+        Window windowChannel1 = 0;
+  //      Window currentWindow = 0;
 	
 	
-    Display *display;
+    	Display *display;
 	Window winRoot = 0;
 
         XWindowAttributes gwa;
         int width = 0;
         int height = 0;
 	
-	float alphaVideo    = 1.0;
-	float alphaProjectM = 1.0;
+	
+	float alphaChannel1 = 1.0;
+	float alphaChannel2 = 1.0;
+	
 
 
 // Function to create a keyboard event
@@ -169,18 +171,18 @@ Window getWindowFromName(Display *display, std::string name)
 
 
 
-void stopVideo() 
+void stopVideo(Window windowChannel) 
 {
 
 	mplayerStarted =  false;
 
 	//Need to declare this here, else it causes weird Xlib failure...
-	XKeyEvent event = createKeyEvent(display, currentTarget, winRoot, true, KEYCODE, 0);
+	XKeyEvent event = createKeyEvent(display, windowChannel, winRoot, true, KEYCODE, 0);
 
 
 	cout << "sending keypress" << endl;
 	//XSetInputFocus(display, currentTarget, false, CurrentTime);
-	XSelectInput(display, currentTarget, KeyPressMask|KeyReleaseMask);
+	XSelectInput(display, windowChannel, KeyPressMask|KeyReleaseMask);
 		
 	// Send a fake key press event to the window.
 
@@ -192,31 +194,23 @@ void stopVideo()
 }
 
 	
-void startVideo(int id) 
+void startVideo(int id, Window * targetWindow) 
 {
-
 	if(mplayerStarted == false)
 	{
-      		//std::string command = "./startVideo.sh " + std::to_string(id);
-     	 	//system(command.c_str());
-      		mplayerStarted =  true;
-		
-		targetVideo = getWindowFromName(display, "MPlayer");
-
-		
-	}
-	else
-	{
-		stopVideo();
-		cout << "Stopping and launching new video" << endl;
-     		std::string command = "./startVideo.sh " + std::to_string(id);
+      		std::string command = "./startVideo.sh " + std::to_string(id);
      	 	system(command.c_str());
       		mplayerStarted =  true;
 		
+		while(*targetWindow == 0) //TODO : reset window when stopping.
+		{ 
+		    *targetWindow = getWindowFromName(display, "MPlayer");
+		    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
 		
 	}
 }
-
+/* no longer needed, will be done thru alpha blending
 void switchTargets() 
 {
 	cout << "switching targets" << endl;
@@ -230,20 +224,19 @@ void switchTargets()
 	}
 
 }
+*/
 
 void startProjectM(int id) 
 {
 
  // system("./startVideo.sh ");
-
-        targetProjectM = getWindowFromName(display, "projectM");
+ //Default channel 1 reserved for projectM
+        windowChannel1 = getWindowFromName(display, "projectM");
         XWindowAttributes gwa;
-        XGetWindowAttributes(display, targetProjectM, &gwa);
+        XGetWindowAttributes(display, windowChannel1, &gwa);
         width = gwa.width;
         height = gwa.height;
 	projectMStarted =  true;
-	currentTarget = targetProjectM;
-
 
 }
 
@@ -272,13 +265,13 @@ void runOSCServer() {
 	  
 	  if (msg->match("/1/fader1").popFloat(tempF)) {
 		
-		alphaVideo = tempF;
-		printf("New alpha for Video : : %f\n", alphaVideo);
+		alphaChannel2 = tempF;
+		printf("New alpha for Video : : %f\n", alphaChannel2);
 	  }
 	  if (msg->match("/1/fader2").popFloat(tempF)) {
 		
-		alphaProjectM = tempF;
-		printf("New alpha for ProjectM : : %f\n", alphaProjectM);
+		alphaChannel1 = tempF;
+		printf("New alpha for ProjectM : : %f\n", alphaChannel1);
 	  }	  
           if (msg->match("/megascreen/video").popInt32(iarg).isOkNoMoreArgs()) {
             cout << "Server: received video request " << iarg << " from " << sock.packetOrigin() << "\n";
@@ -287,16 +280,16 @@ void runOSCServer() {
           //  pw.init().addMessage(repl);
           //  sock.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
           if(iarg == 0){
-	  	stopVideo();
-		if(projectMStarted == true)
-		{
-		   startProjectM(1);
-		}
+	  	stopVideo(windowChannel2);
+		//if(projectMStarted == true)
+		//{
+		//   startProjectM(1);
+		//}
 		continue;
 	  }
 	  if (iarg < 10)
 	  {
-	  	startVideo(iarg);
+	  	startVideo(iarg, &windowChannel2);
 		continue;
 	  }
 	  if (iarg ==10)
@@ -306,7 +299,7 @@ void runOSCServer() {
 	  }
 	  if (iarg ==11)
 	  {
-	   	switchTargets();
+	   	//switchTargets();
 	  	continue;
 	  }
 	  //else {
@@ -424,6 +417,14 @@ int biBitCount =32;
 int dwBmpSize = ((img1->width * biBitCount + 31) / 32) * 4 * img1->height;
 
 
+if(img1 == 0 || img2 == 0)
+{
+	cout << "ERROR : trying to blend with null pointer images" << endl;
+
+}
+
+
+
 for(int h=0; h < img1->height; h++)
 {
   for(int w=0; w < img1->width; w++)
@@ -490,9 +491,6 @@ int main(int argc, char *argv[]) {
   }
 
   FrameCanvas *offscreen_canvas = matrix->CreateFrameCanvas();
-//  FrameCanvas *video_canvas = matrix->CreateFrameCanvas();
-//  FrameCanvas *projectm_canvas = matrix->CreateFrameCanvas();
-
 
 
   signal(SIGTERM, InterruptHandler);
@@ -500,69 +498,80 @@ int main(int argc, char *argv[]) {
 
 
 //Main loop
-
-
-
-
-int count2 = 0;
+  XImage *imgChannel1;
+  XImage *imgChannel2;
   do {
 
     while (!interrupt_received) {
  	count++;
- count2+=5;
  
-//processImage(blank_image, offscreen_canvas, count2);
  
-	if(count > UPDATE_MULTIPLE and ((mplayerStarted == true) && (projectMStarted == true)))
+	if(count > UPDATE_MULTIPLE)
 	{    
 
-cout << "######Condition OK!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
 		count = 0;
- 		XImage *img = XGetImage(display,currentTarget,0,0,width,height,XAllPlanes(),ZPixmap);
+		
+ 		if((projectMStarted == true) && (alphaChannel1 != 0))
+		{		
+			//cout << "projectM started" << endl;
+ 			imgChannel1 = XGetImage(display,windowChannel1,0,0,width,height,XAllPlanes(),ZPixmap);
+		}
+ 		if((mplayerStarted == true) && (alphaChannel2 != 0))
+		{		
+			//cout << "mplayer started" << endl;
 
-
- 		XImage *imgv = XGetImage(display,targetVideo,0,0,width,height,XAllPlanes(),ZPixmap);
- 		XImage *imgp = XGetImage(display,targetProjectM,0,0,width,height,XAllPlanes(),ZPixmap);
+ 			imgChannel2 = XGetImage(display,windowChannel2,0,0,width,height,XAllPlanes(),ZPixmap);
+		}		
  
-        	//if (img != NULL)
-        	if (imgv != NULL)
-
+        	if (((alphaChannel1 != 0) && (alphaChannel2 != 0)) && ((projectMStarted == true)&&(mplayerStarted == true)))
         	{
-        	   //saveXImageToBitmap(img);
-        	   //printf("copying\n");
-        	   //CopyFrame(img, offscreen_canvas); 
-
-		   blendCanvas(imgv, alphaVideo, imgp, alphaProjectM, offscreen_canvas);
+        	   
+		//cout << "both channels available, trying to blend" << endl;
+		   
+		   //When video restarting (loop mode), the window may not be available for few frames.
+		   if(imgChannel1 != 0 && imgChannel2 != 0){
+		   	blendCanvas(imgChannel1, alphaChannel1, imgChannel2, alphaChannel2, offscreen_canvas);
 			//cout << "blended" << endl;
-
-
-        	   XDestroyImage(img);
-        	   XDestroyImage(imgv);
-        	   XDestroyImage(imgp);
+		   }
 
         	}
 		else
 		{
-		  printf( "Error : could not get Ximage. Trying to find proper Window\n" );
-		  //cout << "Error : could not get Ximage. Trying to find proper Window";
-		  if(mplayerStarted == true)
-		  {
-                     	targetVideo = getWindowFromName(display, "MPlayer");
-			XWindowAttributes gwa;
-       	 		XGetWindowAttributes(display, targetVideo, &gwa);
-        		width = gwa.width;
-        		height = gwa.height;
-			
-			currentTarget = targetVideo;
-	
-		  }
+		
+			if((projectMStarted == true) || (mplayerStarted == true))
+			{
+			  //cout << "only one channel to copy" << endl;
+
+			  if((alphaChannel1 != 0) && (imgChannel1 != 0))
+			  {
+			     CopyFrame(imgChannel1, offscreen_canvas); 
+
+			  }
+			  if((alphaChannel2 != 0) && (imgChannel2 != 0))
+			  {
+			     CopyFrame(imgChannel2, offscreen_canvas); 
+
+			  }
+			}
+		 //cout << "copy OK" << endl;
+
+		
 		}
+		
+        	if(imgChannel1 != 0)
+		  	XDestroyImage(imgChannel1);
+		if((imgChannel2 != 0) && (mplayerStarted == true)) //to prevent double free
+        	   	XDestroyImage(imgChannel2);
+	
+		 //cout << "after destroy" << endl;
+
 	}
 
 	
         offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                 	   vsync_multiple);
 	
+	//cout << "copied to rgb matrix" << endl;
 
 
     }
