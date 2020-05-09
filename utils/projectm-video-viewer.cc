@@ -49,11 +49,12 @@ bool projectMStarted = false;
 #include "oscpkt/udp.hh"
 using namespace oscpkt;
 
+
 #define KEYCODE XK_q
 
 
 
-const int PORT_NUM = 5005;
+const int PORT_NUM = 7700;
         Window targetVideo = 0;
         Window targetProjectM = 0;
         Window currentTarget = 0;
@@ -65,6 +66,9 @@ const int PORT_NUM = 5005;
         XWindowAttributes gwa;
         int width = 0;
         int height = 0;
+	
+	float alphaVideo    = 1.0;
+	float alphaProjectM = 1.0;
 
 
 // Function to create a keyboard event
@@ -193,9 +197,13 @@ void startVideo(int id)
 
 	if(mplayerStarted == false)
 	{
-      		std::string command = "./startVideo.sh " + std::to_string(id);
-     	 	system(command.c_str());
+      		//std::string command = "./startVideo.sh " + std::to_string(id);
+     	 	//system(command.c_str());
       		mplayerStarted =  true;
+		
+		targetVideo = getWindowFromName(display, "MPlayer");
+
+		
 	}
 	else
 	{
@@ -255,8 +263,26 @@ void runOSCServer() {
         oscpkt::Message *msg;
         while (pr.isOk() && (msg = pr.popMessage()) != 0) {
           int iarg;
+	  float tempF;
+          cout << "ADDRESS : " << msg->address << endl;
+
+	  
+	  //partialMatch
+	  
+	  
+	  if (msg->match("/1/fader1").popFloat(tempF)) {
+		
+		alphaVideo = tempF;
+		printf("New alpha for Video : : %f\n", alphaVideo);
+	  }
+	  if (msg->match("/1/fader2").popFloat(tempF)) {
+		
+		alphaProjectM = tempF;
+		printf("New alpha for ProjectM : : %f\n", alphaProjectM);
+	  }	  
           if (msg->match("/megascreen/video").popInt32(iarg).isOkNoMoreArgs()) {
             cout << "Server: received video request " << iarg << " from " << sock.packetOrigin() << "\n";
+	    
           //  Message repl; repl.init("/pong").pushInt32(iarg+1);
           //  pw.init().addMessage(repl);
           //  sock.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
@@ -386,7 +412,43 @@ int catcher( Display *disp, XErrorEvent *xe )
 }
 
 
+
+
+void blendCanvas(XImage *img1, float alpha1, XImage *img2, float alpha2, FrameCanvas *result)
+{
+
+
+//printf ("inside blend function\n");
+
+int biBitCount =32;
+int dwBmpSize = ((img1->width * biBitCount + 31) / 32) * 4 * img1->height;
+
+
+for(int h=0; h < img1->height; h++)
+{
+  for(int w=0; w < img1->width; w++)
+  {
+    int indexB = (h*img1->width + w)*4;
+    int indexG = (h*img1->width + w)*4+1;
+    int indexR = (h*img1->width + w)*4+2;
+
+  
+     result->SetPixel(w, h, std::min(int(img1->data[indexR] * alpha1 + img2->data[indexR] * alpha2), 255), 
+     			    std::min(int(img1->data[indexG] * alpha1 + img2->data[indexG] * alpha2), 255), 
+			    std::min(int(img1->data[indexB] * alpha1 + img2->data[indexB] * alpha2), 255));
+ //    result->SetPixel(w, h, 200, 200 , 200);
+
+  }	
+}
+
+
+}
+
+
+
+
 int main(int argc, char *argv[]) {
+
 
 
   int count = 0;
@@ -428,6 +490,8 @@ int main(int argc, char *argv[]) {
   }
 
   FrameCanvas *offscreen_canvas = matrix->CreateFrameCanvas();
+//  FrameCanvas *video_canvas = matrix->CreateFrameCanvas();
+//  FrameCanvas *projectm_canvas = matrix->CreateFrameCanvas();
 
 
 
@@ -437,28 +501,50 @@ int main(int argc, char *argv[]) {
 
 //Main loop
 
+
+
+
+int count2 = 0;
   do {
 
     while (!interrupt_received) {
  	count++;
+ count2+=5;
  
-	if(count > UPDATE_MULTIPLE and (mplayerStarted == true or projectMStarted == true))
+//processImage(blank_image, offscreen_canvas, count2);
+ 
+	if(count > UPDATE_MULTIPLE and ((mplayerStarted == true) && (projectMStarted == true)))
 	{    
 
+cout << "######Condition OK!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
 		count = 0;
  		XImage *img = XGetImage(display,currentTarget,0,0,width,height,XAllPlanes(),ZPixmap);
+
+
+ 		XImage *imgv = XGetImage(display,targetVideo,0,0,width,height,XAllPlanes(),ZPixmap);
+ 		XImage *imgp = XGetImage(display,targetProjectM,0,0,width,height,XAllPlanes(),ZPixmap);
  
-        	if (img != NULL)
+        	//if (img != NULL)
+        	if (imgv != NULL)
+
         	{
         	   //saveXImageToBitmap(img);
         	   //printf("copying\n");
-        	   CopyFrame(img, offscreen_canvas); 
+        	   //CopyFrame(img, offscreen_canvas); 
+
+		   blendCanvas(imgv, alphaVideo, imgp, alphaProjectM, offscreen_canvas);
+			//cout << "blended" << endl;
+
 
         	   XDestroyImage(img);
+        	   XDestroyImage(imgv);
+        	   XDestroyImage(imgp);
+
         	}
 		else
 		{
-		  cout << "Error : could not get Ximage. Trying to find proper Window";
+		  printf( "Error : could not get Ximage. Trying to find proper Window\n" );
+		  //cout << "Error : could not get Ximage. Trying to find proper Window";
 		  if(mplayerStarted == true)
 		  {
                      	targetVideo = getWindowFromName(display, "MPlayer");
