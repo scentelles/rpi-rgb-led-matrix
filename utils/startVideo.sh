@@ -15,3 +15,6 @@ else
 fi
 
 #mplayer -geometry 128x128+0+0 -zoom  -cache 128 -tv driver=v4l2:width=640:height=480:fps=25:outfmt=mjpeg:device=/dev/video0 -nosound -vo x11 tv://
+
+#mplayer  -geometry 128x128+0+0 -zoom  rtsp://192.168.1.25:5554 -vo x11
+
