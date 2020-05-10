@@ -14,3 +14,4 @@ else
     
 fi
 
+#mplayer -cache 128 -tv driver=v4l2:width=640:height=480:fps=25:outfmt=mjpeg:device=/dev/video0 -nosound -vo x11 tv://
