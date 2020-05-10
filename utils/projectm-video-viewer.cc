@@ -41,6 +41,7 @@ using rgb_matrix::StreamIO;
 
 bool mplayerStarted = false;
 bool projectMStarted = false;
+bool imageStarted = false;
 
 #define UPDATE_MULTIPLE 4
 
@@ -55,22 +56,26 @@ using namespace oscpkt;
 
 
 const int PORT_NUM = 7700;
-        Window windowChannel2 = 0;
         Window windowChannel1 = 0;
+        Window windowChannel2 = 0;
+        Window windowChannel3 = 0;
 	
 	
     	Display *display;
 	Window winRoot = 0;
 
         XWindowAttributes gwa;
-        int channel1Width = 0;
-        int channel1Height = 0;
-        int channel2Width = 0;
-        int channel2Height = 0;
+        int channel1Width 	= 0;
+        int channel1Height 	= 0;
+        int channel2Width 	= 0;
+        int channel2Height 	= 0;
+        int channel3Width 	= 0;
+        int channel3Height 	= 0;
 	
 	
 	float alphaChannel1 = 1.0;
 	float alphaChannel2 = 1.0;
+	float alphaChannel3 = 1.0;
 	
 
 
@@ -217,6 +222,31 @@ void startVideo(int id, Window * targetWindow)
 		
 	}
 }
+
+void startImage(int id, Window * targetWindow) 
+{
+	if(imageStarted == false)
+	{
+      		std::string command = "./startImage.sh " + std::to_string(id);
+     	 	//system(command.c_str());
+      		imageStarted =  true;
+		
+		while(*targetWindow == 0) //TODO : reset window when stopping.
+		{ 
+		    cout << "trying to find image window" << endl;
+		    *targetWindow = getWindowFromName(display, "gifview");
+		    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		    
+		}
+        	 XGetWindowAttributes(display, *targetWindow, &gwa);
+       		 channel3Width = gwa.width;
+       		 channel3Height = gwa.height;
+
+		
+	}
+}
+
+
 /* no longer needed, will be done thru alpha blending
 void switchTargets() 
 {
@@ -293,19 +323,20 @@ void runOSCServer() {
 		//}
 		continue;
 	  }
-	  if (iarg < 10)
+	  if (iarg >= 10 && iarg < 20)
 	  {
-	  	startVideo(iarg, &windowChannel2);
-		continue;
-	  }
-	  if (iarg ==10)
-	  {
-	   	startProjectM(iarg);
+	   	startProjectM(10 - iarg);
 	  	continue;
 	  }
-	  if (iarg ==11)
+	  if (iarg >= 20 && iarg < 30)
 	  {
-	   	//switchTargets();
+	  	startVideo(20 - iarg, &windowChannel2);
+		continue;
+	  }
+
+	  if (iarg >= 30 && iarg < 40)
+	  {
+	  	startImage(30 - iarg, &windowChannel3);
 	  	continue;
 	  }
 	  //else {
@@ -505,6 +536,8 @@ int main(int argc, char *argv[]) {
 //Main loop
   XImage *imgChannel1;
   XImage *imgChannel2;
+  XImage *imgChannel3;
+
   do {
 
     while (!interrupt_received) {
@@ -531,6 +564,12 @@ int main(int argc, char *argv[]) {
 
 			
 		}		
+ 		if((imageStarted == true) && (alphaChannel3 != 0))
+		{		
+			//cout << "image started" << endl;
+ 			imgChannel3 = XGetImage(display,windowChannel3,0,0,channel3Width,channel3Height,XAllPlanes(),ZPixmap);
+		}
+
  
         	if (((alphaChannel1 != 0) && (alphaChannel2 != 0)) && ((projectMStarted == true)&&(mplayerStarted == true)))
         	{
@@ -544,14 +583,28 @@ int main(int argc, char *argv[]) {
 		   }
 
         	}
+		
+		
+		if (((alphaChannel2 != 0) && (alphaChannel3 != 0)) && ((mplayerStarted == true)&&(imageStarted == true)))
+        	{
+        	   
+		//cout << "both channels available, trying to blend" << endl;
+		   
+		   //When video restarting (loop mode), the window may not be available for few frames.
+		   if(imgChannel2 != 0 && imgChannel3 != 0){
+		   	blendCanvas(imgChannel2, alphaChannel2, imgChannel3, alphaChannel3, offscreen_canvas);
+			//cout << "blended" << endl;
+		   }
+
+        	}
+
+		
 		else
 		{
 		
-			if((projectMStarted == true) || (mplayerStarted == true))
+			if((projectMStarted == true) || (mplayerStarted == true)|| (imageStarted == true))
 			{
-			  //cout << "only one channel to copy" << endl;
-		          //cout << "channel2 pointer : " << imgChannel2 << endl;
-		          //cout << "channel2 alpha : " << alphaChannel2 << endl;
+			  cout << "only one channel to copy" << endl;
 
 			  if((alphaChannel1 != 0) && (imgChannel1 != 0))
 			  {
@@ -564,6 +617,13 @@ int main(int argc, char *argv[]) {
 			  {
 			     CopyFrame(imgChannel2, offscreen_canvas); 
 			     //cout << "copied channel2" << endl;
+
+			  }
+			  
+			  if((alphaChannel3 != 0) && (imgChannel3 != 0))
+			  {
+			     CopyFrame(imgChannel3, offscreen_canvas); 
+			     //cout << "copied channel3" << endl;
 
 			  }
 			}
