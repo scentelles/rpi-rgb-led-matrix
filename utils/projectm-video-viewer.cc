@@ -57,15 +57,16 @@ using namespace oscpkt;
 const int PORT_NUM = 7700;
         Window windowChannel2 = 0;
         Window windowChannel1 = 0;
-  //      Window currentWindow = 0;
 	
 	
     	Display *display;
 	Window winRoot = 0;
 
         XWindowAttributes gwa;
-        int width = 0;
-        int height = 0;
+        int channel1Width = 0;
+        int channel1Height = 0;
+        int channel2Width = 0;
+        int channel2Height = 0;
 	
 	
 	float alphaChannel1 = 1.0;
@@ -199,14 +200,20 @@ void startVideo(int id, Window * targetWindow)
 	if(mplayerStarted == false)
 	{
       		std::string command = "./startVideo.sh " + std::to_string(id);
-     	 	system(command.c_str());
+     	 	//system(command.c_str());
       		mplayerStarted =  true;
 		
 		while(*targetWindow == 0) //TODO : reset window when stopping.
 		{ 
+		    cout << "trying to find player window" << endl;
 		    *targetWindow = getWindowFromName(display, "MPlayer");
 		    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		    
 		}
+        	 XGetWindowAttributes(display, *targetWindow, &gwa);
+       		 channel2Width = gwa.width;
+       		 channel2Height = gwa.height;
+
 		
 	}
 }
@@ -232,10 +239,9 @@ void startProjectM(int id)
  // system("./startVideo.sh ");
  //Default channel 1 reserved for projectM
         windowChannel1 = getWindowFromName(display, "projectM");
-        XWindowAttributes gwa;
         XGetWindowAttributes(display, windowChannel1, &gwa);
-        width = gwa.width;
-        height = gwa.height;
+        channel1Width  = gwa.width;
+        channel1Height = gwa.height;
 	projectMStarted =  true;
 
 }
@@ -437,7 +443,6 @@ for(int h=0; h < img1->height; h++)
      result->SetPixel(w, h, std::min(int(img1->data[indexR] * alpha1 + img2->data[indexR] * alpha2), 255), 
      			    std::min(int(img1->data[indexG] * alpha1 + img2->data[indexG] * alpha2), 255), 
 			    std::min(int(img1->data[indexB] * alpha1 + img2->data[indexB] * alpha2), 255));
- //    result->SetPixel(w, h, 200, 200 , 200);
 
   }	
 }
@@ -514,13 +519,17 @@ int main(int argc, char *argv[]) {
  		if((projectMStarted == true) && (alphaChannel1 != 0))
 		{		
 			//cout << "projectM started" << endl;
- 			imgChannel1 = XGetImage(display,windowChannel1,0,0,width,height,XAllPlanes(),ZPixmap);
+ 			imgChannel1 = XGetImage(display,windowChannel1,0,0,channel1Width,channel1Height,XAllPlanes(),ZPixmap);
 		}
  		if((mplayerStarted == true) && (alphaChannel2 != 0))
 		{		
 			//cout << "mplayer started" << endl;
 
- 			imgChannel2 = XGetImage(display,windowChannel2,0,0,width,height,XAllPlanes(),ZPixmap);
+ 			imgChannel2 = XGetImage(display,windowChannel2,0,0,channel2Width,channel2Height,XAllPlanes(),ZPixmap);
+			//cout << "current windowChannel2 : " << windowChannel2 << endl;
+			//cout << "returned image pointer for ch2 : " << imgChannel2 << endl;
+
+			
 		}		
  
         	if (((alphaChannel1 != 0) && (alphaChannel2 != 0)) && ((projectMStarted == true)&&(mplayerStarted == true)))
@@ -541,15 +550,20 @@ int main(int argc, char *argv[]) {
 			if((projectMStarted == true) || (mplayerStarted == true))
 			{
 			  //cout << "only one channel to copy" << endl;
+		          //cout << "channel2 pointer : " << imgChannel2 << endl;
+		          //cout << "channel2 alpha : " << alphaChannel2 << endl;
 
 			  if((alphaChannel1 != 0) && (imgChannel1 != 0))
 			  {
 			     CopyFrame(imgChannel1, offscreen_canvas); 
+			     //cout << "copied channel1" << endl;
 
 			  }
+			  
 			  if((alphaChannel2 != 0) && (imgChannel2 != 0))
 			  {
 			     CopyFrame(imgChannel2, offscreen_canvas); 
+			     //cout << "copied channel2" << endl;
 
 			  }
 			}
