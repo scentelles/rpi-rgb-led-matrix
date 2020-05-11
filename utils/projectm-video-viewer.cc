@@ -16,6 +16,7 @@
 
 
 #include <string>
+#include <vector>
 #include <cstring>
 #include <stdio.h>
 #include <iostream>
@@ -53,30 +54,43 @@ using namespace oscpkt;
 
 #define KEYCODE XK_q
 
+#define NB_MAX_CHANNEL 		8
+#define CHANNEL_VIDUALIZER_1 	0
+#define CHANNEL_IMAGE_1 	1
+#define CHANNEL_IMAGE_2 	2
+#define CHANNEL_VIDEO_1 	3
+#define CHANNEL_VIDEO_2 	4
+#define CHANNEL_CAMERA_1 	5
+#define CHANNEL_CAMERA_2 	6
 
 
-const int PORT_NUM = 7700;
-        Window windowChannel1 = 0;
-        Window windowChannel2 = 0;
-        Window windowChannel3 = 0;
-	
-	
+
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, camera = 4 };
+
+class MegaScreenChannel
+{
+	public:
+	Window m_window 	= 0;
+	int m_width 		= 0;
+	int m_height 		= 0;
+	float m_alpha		= 1.0;
+	bool m_started		= false;
+	MSChannelType m_type	= undefined;
+	XImage * img = 0;
+};
+
+MegaScreenChannel MegaScreenChannelArray[NB_MAX_CHANNEL];
+
+
+const int PORT_NUM = 7700; //TODO : get this from args
     	Display *display;
 	Window winRoot = 0;
+	
+
+
 
         XWindowAttributes gwa;
-        int channel1Width 	= 0;
-        int channel1Height 	= 0;
-        int channel2Width 	= 0;
-        int channel2Height 	= 0;
-        int channel3Width 	= 0;
-        int channel3Height 	= 0;
-	
-	
-	float alphaChannel1 = 1.0;
-	float alphaChannel2 = 1.0;
-	float alphaChannel3 = 1.0;
-	
+
 
 
 // Function to create a keyboard event
@@ -199,25 +213,42 @@ void stopVideo(Window windowChannel)
 
 }
 
-	
-void startVideo(int id, Window * targetWindow) 
+void stopChannel(int index)
 {
-	if(mplayerStarted == false)
+	MegaScreenChannel thisChannel = MegaScreenChannelArray[index];
+	switch(thisChannel.m_type){
+		case video :
+			stopVideo(thisChannel.m_window);
+		//case:
+	
+	}
+	
+
+}
+	
+void startVideo(int channelIndex, int videoIndex) 
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = video;
+
+
+	if(thisChannel->m_started == false)
 	{
-      		std::string command = "./startVideo.sh " + std::to_string(id);
+      		std::string command = "./startVideo.sh " + std::to_string(videoIndex);
      	 	//system(command.c_str());
-      		mplayerStarted =  true;
+      		thisChannel->m_started =  true;
 		
-		while(*targetWindow == 0) //TODO : reset window when stopping.
+		while(thisChannel->m_window == 0) //TODO : reset window when stopping.
 		{ 
 		    cout << "trying to find player window" << endl;
-		    *targetWindow = getWindowFromName(display, "MPlayer");
+		    thisChannel->m_window = getWindowFromName(display, "MPlayer");
 		    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		    
 		}
-        	 XGetWindowAttributes(display, *targetWindow, &gwa);
-       		 channel2Width = gwa.width;
-       		 channel2Height = gwa.height;
+        	 XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+       		 thisChannel->m_width  = gwa.width;
+       		 thisChannel->m_height = gwa.height;
 
 		
 	}
@@ -239,11 +270,25 @@ void startImage(int id, Window * targetWindow)
 		    
 		}
         	 XGetWindowAttributes(display, *targetWindow, &gwa);
-       		 channel3Width = gwa.width;
-       		 channel3Height = gwa.height;
+       		 //channel3Width = gwa.width;
+       		 //channel3Height = gwa.height;
 
 		
 	}
+}
+
+
+void startChannel(int index, MSChannelType channelType, int param)
+{
+	switch(channelType){
+		case video :
+			startVideo(index, param);
+			cout << "setting up video channel" << endl;
+		//case:
+	
+	}
+	
+
 }
 
 
@@ -263,6 +308,8 @@ void switchTargets()
 }
 */
 
+
+/*
 void startProjectM(int id) 
 {
 
@@ -275,7 +322,7 @@ void startProjectM(int id)
 	projectMStarted =  true;
 
 }
-
+*/
 
 void runOSCServer() {
   UdpSocket sock; 
@@ -301,13 +348,13 @@ void runOSCServer() {
 	  
 	  if (msg->match("/1/fader1").popFloat(tempF)) {
 		
-		alphaChannel2 = tempF;
-		printf("New alpha for Video : : %f\n", alphaChannel2);
+		//alphaChannel2 = tempF;
+		//printf("New alpha for Video : : %f\n", alphaChannel2);
 	  }
 	  if (msg->match("/1/fader2").popFloat(tempF)) {
 		
-		alphaChannel1 = tempF;
-		printf("New alpha for ProjectM : : %f\n", alphaChannel1);
+		//alphaChannel1 = tempF;
+		//printf("New alpha for ProjectM : : %f\n", alphaChannel1);
 	  }	  
           if (msg->match("/megascreen/video").popInt32(iarg).isOkNoMoreArgs()) {
             cout << "Server: received video request " << iarg << " from " << sock.packetOrigin() << "\n";
@@ -316,27 +363,25 @@ void runOSCServer() {
           //  pw.init().addMessage(repl);
           //  sock.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
           if(iarg == 0){
-	  	stopVideo(windowChannel2);
-		//if(projectMStarted == true)
-		//{
-		//   startProjectM(1);
-		//}
+	  	//stopVideo(windowChannel2);
+
 		continue;
 	  }
 	  if (iarg >= 10 && iarg < 20)
 	  {
-	   	startProjectM(10 - iarg);
+	   	//startProjectM(10 - iarg);
 	  	continue;
 	  }
 	  if (iarg >= 20 && iarg < 30)
 	  {
-	  	startVideo(20 - iarg, &windowChannel2);
+	  	//startVideo(1, 20 - iarg);
+		startChannel(CHANNEL_VIDEO_1, video, 20 - iarg);
 		continue;
 	  }
 
 	  if (iarg >= 30 && iarg < 40)
 	  {
-	  	startImage(30 - iarg, &windowChannel3);
+	  	//startImage(30 - iarg, &windowChannel3);
 	  	continue;
 	  }
 	  //else {
@@ -368,7 +413,7 @@ struct LedPixel {
 
 
 
-void CopyFrame(XImage *pXimage, FrameCanvas *canvas) {
+void CopyFrame(XImage *pXimage, FrameCanvas *canvas, float alpha) {
 
 char * tempData;
 int biBitCount =32;
@@ -389,7 +434,7 @@ for(int h=0; h < pXimage->height; h++)
     tempData[((pXimage->height-1-h)*pXimage->width + w) * 4+1] = pXimage->data[indexG];
     tempData[((pXimage->height-1-h)*pXimage->width + w) * 4+2] = pXimage->data[indexR];
    
-     canvas->SetPixel(w, h, pXimage->data[indexR], pXimage->data[indexG], pXimage->data[indexB]);
+     canvas->SetPixel(w, h, pXimage->data[indexR]*alpha, pXimage->data[indexG]*alpha, pXimage->data[indexB]*alpha);
 
   }	
 }
@@ -438,6 +483,10 @@ static int usage(const char *progname, const char *msg = nullptr) {
 int catcher( Display *disp, XErrorEvent *xe )
 {
         printf( "\nSomething bad happened, bruh.\n" );
+	
+	
+	//TODO : exit to have proper gmon file generation when profiling 
+	//exit(0);
         return 0;
 }
 
@@ -481,7 +530,19 @@ for(int h=0; h < img1->height; h++)
 
 }
 
-
+std::vector<MegaScreenChannel*> getActiveChannelList(){
+  
+  std::vector<MegaScreenChannel*> result; 
+  for(int i = 0; i < NB_MAX_CHANNEL; i++){
+    MegaScreenChannel* tempChannel = &(MegaScreenChannelArray[i]);
+    if(tempChannel->m_started){
+      result.push_back(tempChannel);
+      
+    }
+    
+  }
+  return result;
+}
 
 
 int main(int argc, char *argv[]) {
@@ -534,10 +595,8 @@ int main(int argc, char *argv[]) {
 
 
 //Main loop
-  XImage *imgChannel1;
-  XImage *imgChannel2;
-  XImage *imgChannel3;
 
+ 
   do {
 
     while (!interrupt_received) {
@@ -548,29 +607,20 @@ int main(int argc, char *argv[]) {
 	{    
 
 		count = 0;
+		std::vector<MegaScreenChannel*> activeChannelList = getActiveChannelList();
 		
- 		if((projectMStarted == true) && (alphaChannel1 != 0))
-		{		
-			//cout << "projectM started" << endl;
- 			imgChannel1 = XGetImage(display,windowChannel1,0,0,channel1Width,channel1Height,XAllPlanes(),ZPixmap);
-		}
- 		if((mplayerStarted == true) && (alphaChannel2 != 0))
-		{		
-			//cout << "mplayer started" << endl;
-
- 			imgChannel2 = XGetImage(display,windowChannel2,0,0,channel2Width,channel2Height,XAllPlanes(),ZPixmap);
-			//cout << "current windowChannel2 : " << windowChannel2 << endl;
-			//cout << "returned image pointer for ch2 : " << imgChannel2 << endl;
-
-			
-		}		
- 		if((imageStarted == true) && (alphaChannel3 != 0))
-		{		
-			//cout << "image started" << endl;
- 			imgChannel3 = XGetImage(display,windowChannel3,0,0,channel3Width,channel3Height,XAllPlanes(),ZPixmap);
+		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
+		{
+		    cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
+		    (*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
+		    if((*it)->img != 0)
+		    {
+		        CopyFrame((*it)->img, offscreen_canvas, (*it)->m_alpha); 
+			XDestroyImage((*it)->img );
+		    }
 		}
 
- 
+/*
         	if (((alphaChannel1 != 0) && (alphaChannel2 != 0)) && ((projectMStarted == true)&&(mplayerStarted == true)))
         	{
         	   
@@ -583,61 +633,8 @@ int main(int argc, char *argv[]) {
 		   }
 
         	}
-		
-		
-		if (((alphaChannel2 != 0) && (alphaChannel3 != 0)) && ((mplayerStarted == true)&&(imageStarted == true)))
-        	{
-        	   
-		//cout << "both channels available, trying to blend" << endl;
-		   
-		   //When video restarting (loop mode), the window may not be available for few frames.
-		   if(imgChannel2 != 0 && imgChannel3 != 0){
-		   	blendCanvas(imgChannel2, alphaChannel2, imgChannel3, alphaChannel3, offscreen_canvas);
-			//cout << "blended" << endl;
-		   }
-
-        	}
-
-		
-		else
-		{
-		
-			if((projectMStarted == true) || (mplayerStarted == true)|| (imageStarted == true))
-			{
-			  cout << "only one channel to copy" << endl;
-
-			  if((alphaChannel1 != 0) && (imgChannel1 != 0))
-			  {
-			     CopyFrame(imgChannel1, offscreen_canvas); 
-			     //cout << "copied channel1" << endl;
-
-			  }
-			  
-			  if((alphaChannel2 != 0) && (imgChannel2 != 0))
-			  {
-			     CopyFrame(imgChannel2, offscreen_canvas); 
-			     //cout << "copied channel2" << endl;
-
-			  }
-			  
-			  if((alphaChannel3 != 0) && (imgChannel3 != 0))
-			  {
-			     CopyFrame(imgChannel3, offscreen_canvas); 
-			     //cout << "copied channel3" << endl;
-
-			  }
-			}
-		 //cout << "copy OK" << endl;
-
-		
-		}
-		
-        	if(imgChannel1 != 0)
-		  	XDestroyImage(imgChannel1);
-		if((imgChannel2 != 0) && (mplayerStarted == true)) //to prevent double free
-        	   	XDestroyImage(imgChannel2);
+*/		
 	
-		 //cout << "after destroy" << endl;
 
 	}
 

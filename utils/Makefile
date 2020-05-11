@@ -1,4 +1,7 @@
 CXXFLAGS=-Wall -O3 -g -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64
+#for profiling
+#CXXFLAGS=-Wall -pg -O3 -g -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64
+
 OBJECTS=led-image-viewer.o text-scroller.o projectm-image-viewer.o 
 BINARIES=led-image-viewer text-scroller projectm-image-viewer
 
