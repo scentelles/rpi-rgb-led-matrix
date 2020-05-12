@@ -194,18 +194,14 @@ Window getWindowFromName(Display *display, std::string name)
 void stopVideo(Window windowChannel) 
 {
 
-	mplayerStarted =  false;
-
 	//Need to declare this here, else it causes weird Xlib failure...
 	XKeyEvent event = createKeyEvent(display, windowChannel, winRoot, true, KEYCODE, 0);
-
 
 	cout << "sending keypress" << endl;
 	//XSetInputFocus(display, currentTarget, false, CurrentTime);
 	XSelectInput(display, windowChannel, KeyPressMask|KeyReleaseMask);
 		
 	// Send a fake key press event to the window.
-
 	XSendEvent(event.display, event.window, True, KeyPressMask, (XEvent *)&event);
 
 	XFlush(display) ;
@@ -215,14 +211,19 @@ void stopVideo(Window windowChannel)
 
 void stopChannel(int index)
 {
-	MegaScreenChannel thisChannel = MegaScreenChannelArray[index];
-	switch(thisChannel.m_type){
+	MegaScreenChannel* thisChannel = &(MegaScreenChannelArray[index]);
+
+	thisChannel->m_started = false;
+
+	switch(thisChannel->m_type){
 		case video :
-			stopVideo(thisChannel.m_window);
+			stopVideo(thisChannel->m_window);
+
+
 		//case:
 	
 	}
-	
+	thisChannel->m_window = 0;	
 
 }
 	
@@ -233,25 +234,27 @@ void startVideo(int channelIndex, int videoIndex)
 	thisChannel->m_type = video;
 
 
-	if(thisChannel->m_started == false)
-	{
-      		std::string command = "./startVideo.sh " + std::to_string(videoIndex);
-     	 	//system(command.c_str());
-      		thisChannel->m_started =  true;
-		
-		while(thisChannel->m_window == 0) //TODO : reset window when stopping.
-		{ 
-		    cout << "trying to find player window" << endl;
-		    thisChannel->m_window = getWindowFromName(display, "MPlayer");
-		    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		    
-		}
-        	 XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-       		 thisChannel->m_width  = gwa.width;
-       		 thisChannel->m_height = gwa.height;
+
+	std::string command = "./startVideo.sh " + std::to_string(videoIndex);
+ 	cout << "Issued command : " << command << endl;
+	system(command.c_str());
 
 		
+	while(thisChannel->m_window == 0) //TODO : reset window when stopping.
+	{ 
+	    cout << "trying to find player window" << endl;
+	    thisChannel->m_window = getWindowFromName(display, "MPlayer");
+	    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		    
 	}
+	
+
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
+	thisChannel->m_started =  true;
+		
 }
 
 void startImage(int id, Window * targetWindow) 
@@ -280,6 +283,15 @@ void startImage(int id, Window * targetWindow)
 
 void startChannel(int index, MSChannelType channelType, int param)
 {
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[index]);
+	
+	if(thisChannel->m_started == true)
+	{
+		cout << "CHANNEL ALREADY STARTED. STOPPING IT" << endl;
+		stopChannel(index);
+		XSync(display, false);
+		sleep(1); //todo : use exact window name to check for corretct window. Else, close takes longer than reopen and finds previous window.find a way to sync on proper closure of application.
+	}
 	switch(channelType){
 		case video :
 			startVideo(index, param);
@@ -363,7 +375,7 @@ void runOSCServer() {
           //  pw.init().addMessage(repl);
           //  sock.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
           if(iarg == 0){
-	  	//stopVideo(windowChannel2);
+		  stopChannel(CHANNEL_VIDEO_1);
 
 		continue;
 	  }
@@ -375,7 +387,7 @@ void runOSCServer() {
 	  if (iarg >= 20 && iarg < 30)
 	  {
 	  	//startVideo(1, 20 - iarg);
-		startChannel(CHANNEL_VIDEO_1, video, 20 - iarg);
+		startChannel(CHANNEL_VIDEO_1, video, iarg - 20);
 		continue;
 	  }
 
@@ -486,7 +498,7 @@ int catcher( Display *disp, XErrorEvent *xe )
 	
 	
 	//TODO : exit to have proper gmon file generation when profiling 
-	//exit(0);
+	exit(0);
         return 0;
 }
 
@@ -612,12 +624,16 @@ int main(int argc, char *argv[]) {
 		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
 		{
 		    cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
-		    (*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
-		    if((*it)->img != 0)
-		    {
-		        CopyFrame((*it)->img, offscreen_canvas, (*it)->m_alpha); 
-			XDestroyImage((*it)->img );
-		    }
+			if(display,(*it)->m_window != 0)
+			{
+				(*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
+				if((*it)->img != 0)
+				{
+					CopyFrame((*it)->img, offscreen_canvas, (*it)->m_alpha); 
+				XDestroyImage((*it)->img );
+				}
+				
+			}
 		}
 
 /*
