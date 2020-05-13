@@ -54,14 +54,14 @@ using namespace oscpkt;
 
 #define KEYCODE XK_q
 
-#define NB_MAX_CHANNEL 		8
-#define CHANNEL_VIDUALIZER_1 	0
-#define CHANNEL_IMAGE_1 	1
-#define CHANNEL_IMAGE_2 	2
-#define CHANNEL_VIDEO_1 	3
-#define CHANNEL_VIDEO_2 	4
-#define CHANNEL_CAMERA_1 	5
-#define CHANNEL_CAMERA_2 	6
+#define NB_MAX_CHANNEL 			8
+#define CHANNEL_VISUALIZER_1 	0
+#define CHANNEL_IMAGE_1 		1
+#define CHANNEL_IMAGE_2 		2
+#define CHANNEL_VIDEO_1 		3
+#define CHANNEL_VIDEO_2 		4
+#define CHANNEL_CAMERA_1 		5
+#define CHANNEL_CAMERA_2 		6
 
 
 
@@ -82,7 +82,7 @@ class MegaScreenChannel
 MegaScreenChannel MegaScreenChannelArray[NB_MAX_CHANNEL];
 
 
-const int PORT_NUM = 7700; //TODO : get this from args
+const int PORT_NUM = 7701; //TODO : get this from args
     	Display *display;
 	Window winRoot = 0;
 	
@@ -233,14 +233,12 @@ void startVideo(int channelIndex, int videoIndex)
 
 	thisChannel->m_type = video;
 
-
-
 	std::string command = "./startVideo.sh " + std::to_string(videoIndex);
  	cout << "Issued command : " << command << endl;
 	system(command.c_str());
 
 		
-	while(thisChannel->m_window == 0) //TODO : reset window when stopping.
+	while(thisChannel->m_window == 0) 
 	{ 
 	    cout << "trying to find player window" << endl;
 	    thisChannel->m_window = getWindowFromName(display, "MPlayer");
@@ -257,27 +255,60 @@ void startVideo(int channelIndex, int videoIndex)
 		
 }
 
-void startImage(int id, Window * targetWindow) 
+void startImage(int channelIndex, int videoIndex) 
 {
-	if(imageStarted == false)
-	{
-      		std::string command = "./startImage.sh " + std::to_string(id);
-     	 	//system(command.c_str());
-      		imageStarted =  true;
-		
-		while(*targetWindow == 0) //TODO : reset window when stopping.
-		{ 
-		    cout << "trying to find image window" << endl;
-		    *targetWindow = getWindowFromName(display, "gifview");
-		    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		    
-		}
-        	 XGetWindowAttributes(display, *targetWindow, &gwa);
-       		 //channel3Width = gwa.width;
-       		 //channel3Height = gwa.height;
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = image;
+
+	std::string command = "./startImage.sh " + std::to_string(videoIndex);
+ 	cout << "Issued command : " << command << endl;
+	system(command.c_str());
 
 		
+	while(thisChannel->m_window == 0) 
+	{ 
+	    cout << "trying to find image window" << endl;
+	    thisChannel->m_window = getWindowFromName(display, "gifview");
+	    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		    
 	}
+	
+
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
+	thisChannel->m_started =  true;
+}
+
+
+void startProjectM(int channelIndex, int presetIndex) //TODO : refactor to have generic function start
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = visualizer;
+
+	std::string command = "./startProjectm.sh " + std::to_string(presetIndex);
+ 	cout << "Issued command : " << command << endl;
+	//system(command.c_str());
+
+		
+	while(thisChannel->m_window == 0) 
+	{ 
+	    cout << "trying to find projectM window" << endl;
+	    thisChannel->m_window = getWindowFromName(display, "projectM");
+	    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		    
+	}
+	
+
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
+	thisChannel->m_started =  true;
+		
 }
 
 
@@ -294,10 +325,17 @@ void startChannel(int index, MSChannelType channelType, int param)
 	}
 	switch(channelType){
 		case video :
-			startVideo(index, param);
 			cout << "setting up video channel" << endl;
-		//case:
-	
+			startVideo(index, param);
+			break;
+		case visualizer:
+			cout << "setting up visualizer channel" << endl;
+			startProjectM(index, param);
+			break;
+		case image:
+			cout << "setting up image channel" << endl;
+			startImage(index, param);
+			break;	
 	}
 	
 
@@ -321,20 +359,7 @@ void switchTargets()
 */
 
 
-/*
-void startProjectM(int id) 
-{
 
- // system("./startVideo.sh ");
- //Default channel 1 reserved for projectM
-        windowChannel1 = getWindowFromName(display, "projectM");
-        XGetWindowAttributes(display, windowChannel1, &gwa);
-        channel1Width  = gwa.width;
-        channel1Height = gwa.height;
-	projectMStarted =  true;
-
-}
-*/
 
 void runOSCServer() {
   UdpSocket sock; 
@@ -376,24 +401,26 @@ void runOSCServer() {
           //  sock.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
           if(iarg == 0){
 		  stopChannel(CHANNEL_VIDEO_1);
+		  stopChannel(CHANNEL_IMAGE_1);
+  		  stopChannel(CHANNEL_VISUALIZER_1);
+
 
 		continue;
 	  }
 	  if (iarg >= 10 && iarg < 20)
 	  {
-	   	//startProjectM(10 - iarg);
-	  	continue;
+	   	startChannel(CHANNEL_VISUALIZER_1, visualizer, iarg - 10);
+		continue;
 	  }
 	  if (iarg >= 20 && iarg < 30)
 	  {
-	  	//startVideo(1, 20 - iarg);
-		startChannel(CHANNEL_VIDEO_1, video, iarg - 20);
+	  	startChannel(CHANNEL_VIDEO_1, video, iarg - 20);
 		continue;
 	  }
 
 	  if (iarg >= 30 && iarg < 40)
 	  {
-	  	//startImage(30 - iarg, &windowChannel3);
+	  	startChannel(CHANNEL_IMAGE_1, image, iarg - 30);
 	  	continue;
 	  }
 	  //else {

@@ -9,7 +9,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("--ip", default="127.0.0.1",
       help="The ip of the OSC server")
-  parser.add_argument("--port", type=int, default=7700,
+  parser.add_argument("--port", type=int, default=7701,
       help="The port the OSC server is listening on")
   parser.add_argument("--value", type=int, default=0,
       help="The value to send")
