@@ -2,8 +2,8 @@ CXXFLAGS=-Wall -O3 -g -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64
 #for profiling
 #CXXFLAGS=-Wall -pg -O3 -g -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64
 
-OBJECTS=led-image-viewer.o text-scroller.o projectm-image-viewer.o 
-BINARIES=led-image-viewer text-scroller projectm-image-viewer
+OBJECTS=led-image-viewer.o text-scroller.o projectm-image-viewer.o app-launcher.o
+BINARIES=led-image-viewer text-scroller projectm-image-viewer app-launcher
 
 OPTIONAL_OBJECTS=video-viewer.o projectm-video-viewer.o
 OPTIONAL_BINARIES=video-viewer projectm-video-viewer
@@ -37,8 +37,9 @@ led-image-viewer: led-image-viewer.o $(RGB_LIBRARY)
 video-viewer: video-viewer.o $(RGB_LIBRARY)
 	$(CXX) $(CXXFLAGS) video-viewer.o -o $@ $(LDFLAGS) `pkg-config --cflags --libs  libavcodec libavformat libswscale libavutil`
 
-projectm-image-viewer: projectm-image-viewer.o $(RGB_LIBRARY)
-	$(CXX) $(CXXFLAGS) projectm-image-viewer.o -o $@ $(LDFLAGS) $(MAGICK_LDFLAGS)
+
+app-launcher: app-launcher.o
+	$(CXX) $(CXXFLAGS) app-launcher.o -o $@ $(LDFLAGS)
 
 projectm-video-viewer: projectm-video-viewer.o $(RGB_LIBRARY)
 	$(CXX) $(CXXFLAGS) projectm-video-viewer.o -o $@ $(LDFLAGS) `pkg-config --cflags --libs  libavcodec libavformat libswscale libavutil`
@@ -58,6 +59,10 @@ projectm-image-viewer.o : projectm-image-viewer.cc
 # the latest libraries is welcome.
 video-viewer.o: video-viewer.cc
 	$(CXX) -I$(RGB_INCDIR) $(CXXFLAGS) -Wno-deprecated-declarations -c -o $@ $<
+
+app-launcher.o: app-launcher.cpp
+	$(CXX) $(CXXFLAGS) -Wno-deprecated-declarations -c -o $@ $<
+
 
 projectm-video-viewer.o: projectm-video-viewer.cc
 	$(CXX) -I$(RGB_INCDIR) $(CXXFLAGS) -Wno-deprecated-declarations -c -o $@ $<

@@ -51,6 +51,10 @@ bool imageStarted = false;
 #include "oscpkt/udp.hh"
 using namespace oscpkt;
 
+UdpSocket sock; 
+UdpSocket sock2; 
+const int PORT_NUM = 7701; //TODO : get this from args
+const int PORT_NUM2 = 7702; //TODO : get this from args
 
 #define KEYCODE XK_q
 
@@ -60,12 +64,14 @@ using namespace oscpkt;
 #define CHANNEL_IMAGE_2 		2
 #define CHANNEL_VIDEO_1 		3
 #define CHANNEL_VIDEO_2 		4
-#define CHANNEL_CAMERA_1 		5
-#define CHANNEL_CAMERA_2 		6
+#define CHANNEL_SLIDESWHOW_1	5
+#define CHANNEL_SLIDESWHOW_2	6
+#define CHANNEL_CAMERA_1 		7
+#define CHANNEL_CAMERA_2 		8
 
 
 
-enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, camera = 4 };
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5 };
 
 class MegaScreenChannel
 {
@@ -82,7 +88,7 @@ class MegaScreenChannel
 MegaScreenChannel MegaScreenChannelArray[NB_MAX_CHANNEL];
 
 
-const int PORT_NUM = 7701; //TODO : get this from args
+
     	Display *display;
 	Window winRoot = 0;
 	
@@ -133,7 +139,7 @@ Window *getWindowList(Display *disp, unsigned long *len) {
 
     return (Window*)list;
 }
-char *getWindowName(Display *disp, Window win) {
+std::string getWindowName(Display *disp, Window win) {
     Atom prop = XInternAtom(disp,"WM_NAME",False), type;
     int form;
     unsigned long remain, len;
@@ -143,10 +149,20 @@ char *getWindowName(Display *disp, Window win) {
     if (XGetWindowProperty(disp,win,prop,0,1024,False,AnyPropertyType,
                 &type,&form,&len,&remain,&list) != Success) { // XA_STRING
 
-        return NULL;
+        return "";
     }
 
-    return (char*)list;
+	if(len != 0)
+	{
+		return std::string((char*)list);
+	
+	}
+	else
+	{
+		//upon creation of window, when app launches, name can be empty.
+		cout << "WARNING : Window without name yet ! "<< endl;
+		return "";
+	}
 }
 
 
@@ -163,10 +179,12 @@ Window getWindowFromName(Display *display, std::string name)
     int windowId = -1;
     
     list = (Window*)getWindowList(display,&len);
-    
+    std::string tempName;
+		
     for (j=0;j<(int)len;j++) {
-        std::string tempName = getWindowName(display,list[j]);
-	cout << "\tWindow name : " << tempName << endl;
+        tempName = getWindowName(display,list[j]);
+
+	//cout << "\tWindow name : " << tempName << endl;
 	
 	std::size_t found = tempName.find(name);
 	if(found != std::string::npos)
@@ -311,6 +329,51 @@ void startProjectM(int channelIndex, int presetIndex) //TODO : refactor to have 
 		
 }
 
+void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have generic function start
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = slideshow;
+
+  sock2.connectTo("localhost", PORT_NUM2);
+  if (!sock.isOk()) {
+    cerr << "Error opening port " << PORT_NUM << ": " << sock.errorMessage() << "\n";
+  } else {
+	  cout << "sock2 opened. sending message to start app" << endl;
+
+
+
+	std::string command = "./startSlideshow.sh " + std::to_string(presetIndex);
+ 	cout << "Issued command : " << command << endl;
+	//system(command.c_str());
+	
+	      Message repl; repl.init("/megascreen/startapp/slideshow").pushInt32(presetIndex);
+		  PacketWriter pw;
+          pw.init().addMessage(repl);
+          sock2.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
+		  cout << "packet OSC sent" << endl;
+
+		
+	while(thisChannel->m_window == 0) 
+	{ 
+	    cout << "trying to find impress window" << endl;
+	    thisChannel->m_window = getWindowFromName(display, "slide");//todo : look for proper name
+	    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		    
+	}
+	
+	
+    XResizeWindow(display, thisChannel->m_window , 128, 128); //TODO set according to config of the screen
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
+	sleep(1);//TODO resize takes time?
+	thisChannel->m_started =  true;
+  }
+		
+}
+
 
 void startChannel(int index, MSChannelType channelType, int param)
 {
@@ -335,6 +398,10 @@ void startChannel(int index, MSChannelType channelType, int param)
 		case image:
 			cout << "setting up image channel" << endl;
 			startImage(index, param);
+			break;	
+		case slideshow:
+			cout << "setting up slideshow channel" << endl;
+			startSlideshow(index, param);
 			break;	
 	}
 	
@@ -362,7 +429,7 @@ void switchTargets()
 
 
 void runOSCServer() {
-  UdpSocket sock; 
+
   sock.bindTo(PORT_NUM);
   if (!sock.isOk()) {
     cerr << "Error opening port " << PORT_NUM << ": " << sock.errorMessage() << "\n";
@@ -421,6 +488,11 @@ void runOSCServer() {
 	  if (iarg >= 30 && iarg < 40)
 	  {
 	  	startChannel(CHANNEL_IMAGE_1, image, iarg - 30);
+	  	continue;
+	  }
+	  if (iarg >= 40 && iarg < 50)
+	  {
+	  	startChannel(CHANNEL_SLIDESWHOW_1, slideshow, iarg - 40);
 	  	continue;
 	  }
 	  //else {
@@ -524,8 +596,12 @@ int catcher( Display *disp, XErrorEvent *xe )
         printf( "\nSomething bad happened, bruh.\n" );
 	
 	
+	//TODO : look for channel started but window not found
+	
+	
+	
 	//TODO : exit to have proper gmon file generation when profiling 
-	exit(0);
+	//exit(0);
         return 0;
 }
 
@@ -651,14 +727,26 @@ int main(int argc, char *argv[]) {
 		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
 		{
 		    cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
-			if(display,(*it)->m_window != 0)
+			if((*it)->m_window != 0)
 			{
 				(*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
-				if((*it)->img != 0)
+				
+				if((*it)->img == NULL)
 				{
-					CopyFrame((*it)->img, offscreen_canvas, (*it)->m_alpha); 
-				XDestroyImage((*it)->img );
+					cout << "WARNING : image pointer null while channel started. Resetting channel state" << endl;
+					
+					(*it)->m_started = false;
+					(*it)->m_window = 0;
 				}
+				else
+				{
+					if((*it)->img != 0)
+					{
+						CopyFrame((*it)->img, offscreen_canvas, (*it)->m_alpha); 
+						XDestroyImage((*it)->img );
+					}
+				}
+				
 				
 			}
 		}
