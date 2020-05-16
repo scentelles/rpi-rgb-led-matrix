@@ -253,7 +253,7 @@ void startVideo(int channelIndex, int videoIndex)
 
 	std::string command = "./startVideo.sh " + std::to_string(videoIndex);
  	cout << "Issued command : " << command << endl;
-	system(command.c_str());
+	//system(command.c_str());
 
 		
 	while(thisChannel->m_window == 0) 
@@ -343,14 +343,10 @@ void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have
 
 
 
-	std::string command = "./startSlideshow.sh " + std::to_string(presetIndex);
- 	cout << "Issued command : " << command << endl;
-	//system(command.c_str());
-	
 	      Message repl; repl.init("/megascreen/startapp/slideshow").pushInt32(presetIndex);
 		  PacketWriter pw;
           pw.init().addMessage(repl);
-          sock2.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
+          //sock2.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
 		  cout << "packet OSC sent" << endl;
 
 		
@@ -452,8 +448,7 @@ void runOSCServer() {
 	  
 	  if (msg->match("/1/fader1").popFloat(tempF)) {
 		
-		//alphaChannel2 = tempF;
-		//printf("New alpha for Video : : %f\n", alphaChannel2);
+		MegaScreenChannelArray[CHANNEL_VIDEO_1].m_alpha = tempF;
 	  }
 	  if (msg->match("/1/fader2").popFloat(tempF)) {
 		
@@ -659,6 +654,41 @@ std::vector<MegaScreenChannel*> getActiveChannelList(){
   return result;
 }
 
+//Blends two images of same size
+void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
+{
+	cout << "pointerin : " << inputImage << " | pointerout : " << outputImage << endl;
+	for(int x = 0; x < inputImage->width; x++)
+	{
+		for(int y = 0; y < inputImage->height; y++)
+		{
+			XColor colorsInput, colorsOutput;
+			colorsInput.pixel  = XGetPixel(inputImage, x, y);
+			colorsOutput.pixel = XGetPixel(outputImage, x, y);
+
+
+			unsigned long red_mask   = inputImage->red_mask;
+			unsigned long green_mask = inputImage->green_mask;
+			unsigned long blue_mask  = inputImage->blue_mask;						
+				  
+			int BI = (colorsInput.pixel & blue_mask) * alpha;
+			int GI = ((colorsInput.pixel & green_mask) >> 8) * alpha;
+			int RI = ((colorsInput.pixel & red_mask) >> 16) * alpha;      
+			int BO = (colorsOutput.pixel & blue_mask) * alpha;
+			int GO = ((colorsOutput.pixel & green_mask) >> 8) * alpha;
+			int RO = ((colorsOutput.pixel & red_mask) >> 16) * alpha;   	
+			int BResult =  std::min(BI + BO, 255);
+			int GResult =  std::min(GI + GO, 255);
+			int RResult =  std::min(RI + RO, 255);
+			colorsOutput.pixel = 65536 * RResult + 256 * GResult + BResult ; 
+			XPutPixel(outputImage, x, y, colorsOutput.pixel);
+	
+		}
+	}
+							
+
+}
+
 
 int main(int argc, char *argv[]) {
 
@@ -711,7 +741,8 @@ int main(int argc, char *argv[]) {
 
 //Main loop
 
- 
+  
+  
   do {
 
     while (!interrupt_received) {
@@ -723,16 +754,21 @@ int main(int argc, char *argv[]) {
 
 		count = 0;
 		std::vector<MegaScreenChannel*> activeChannelList = getActiveChannelList();
+		cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
 		
+		int index = 0;
+		
+
+		XImage finalImage;
 		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
 		{
-		    cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
+			cout << "looping on active channels : index " << index << endl;
 			if((*it)->m_window != 0)
 			{
 				(*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
-				
 				if((*it)->img == NULL)
 				{
+					
 					cout << "WARNING : image pointer null while channel started. Resetting channel state" << endl;
 					
 					(*it)->m_started = false;
@@ -742,29 +778,53 @@ int main(int argc, char *argv[]) {
 				{
 					if((*it)->img != 0)
 					{
-						CopyFrame((*it)->img, offscreen_canvas, (*it)->m_alpha); 
-						XDestroyImage((*it)->img );
+						if(index == 0)
+						{
+						    finalImage = *((*it)->img);								
+
+							for(int x = 0; x < (*it)->img->width; x++)
+							{
+								for(int y = 0; y < (*it)->img->height; y++)
+								{
+									XColor colors;
+									colors.pixel = XGetPixel((*it)->img, x, y);
+									unsigned long red_mask   = finalImage.red_mask;
+									unsigned long green_mask = finalImage.green_mask;
+									unsigned long blue_mask  = finalImage.blue_mask;						
+										  
+									int B1 = (colors.pixel & blue_mask) * (*it)->m_alpha;
+									int G1 = ((colors.pixel & green_mask) >> 8) * (*it)->m_alpha;
+									int R1 = ((colors.pixel & red_mask) >> 16) * (*it)->m_alpha;      
+									colors.pixel = 65536 * R1 + 256 * G1 + B1 ; 
+									XPutPixel(&finalImage, x, y, colors.pixel);
+							
+								}
+							}
+						}
+						
+						else //for all other indexes, > 0
+						{
+							cout << "index : " << index << "blending channel images " << endl; 
+							cout << "channel pointer of index 1 : " << *it << endl;
+							cout << "\tindex 1 pointer : " << (*it)->img << endl;
+							cout << "\t\t now index 0 set to : " << &finalImage << endl;
+							blendImage((*it)->img, (*it)->m_alpha, &finalImage);
+						}
+
 					}
 				}
 				
 				
 			}
+			index++;
 		}
+		
+		if(activeChannelList.size() != 0)
+		{
+		    CopyFrame(&finalImage, offscreen_canvas, 1.0); 
+		}
+		//TODO : warning : there should be memory leak as we do not destry images above
 
-/*
-        	if (((alphaChannel1 != 0) && (alphaChannel2 != 0)) && ((projectMStarted == true)&&(mplayerStarted == true)))
-        	{
-        	   
-		//cout << "both channels available, trying to blend" << endl;
-		   
-		   //When video restarting (loop mode), the window may not be available for few frames.
-		   if(imgChannel1 != 0 && imgChannel2 != 0){
-		   	blendCanvas(imgChannel1, alphaChannel1, imgChannel2, alphaChannel2, offscreen_canvas);
-			//cout << "blended" << endl;
-		   }
-
-        	}
-*/		
 	
 
 	}
