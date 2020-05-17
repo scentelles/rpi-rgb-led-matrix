@@ -689,12 +689,32 @@ void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 
 }
 
+XImage *CreateColorImage(Display *display, Visual *visual, unsigned char *image, int width, int height, unsigned char red, unsigned char green, unsigned char blue )
+{
+    int i, j;
+    unsigned char *image32=(unsigned char *)malloc(width*height*4);
+    unsigned char *p=image32;
+    for(i=0; i<width; i++)
+    {
+        for(j=0; j<height; j++)
+        {
+                *p++=red; // blue
+                *p++=green; // green
+                *p++=blue; // red
+   
+            p++;
+        }
+    }
+    return XCreateImage(display, visual, DefaultDepth(display,DefaultScreen(display)), ZPixmap, 0, (char*)image32, width, height, 32, 0);
+}
+
+
 
 int main(int argc, char *argv[]) {
 
 
 
-  int count = 0;
+	int count = 0;
 
 //X11 related
 
@@ -739,6 +759,18 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, InterruptHandler);
 
 
+//Debug Display Window
+//TODO : get resolution from config
+Window window=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, 128, 128, 1, 0, 0);
+XStoreName(display, window, "VIRTUAL MS");
+XMapWindow(display, window);
+
+Visual *visual=DefaultVisual(display, 0);
+
+XImage blackImage = *(CreateColorImage(display, visual, 0, 128, 128, 0, 0, 0));
+XImage whiteImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 255, 255));
+XImage finalImage = blackImage; //TODO get resolution from config
+
 //Main loop
 
   
@@ -759,7 +791,7 @@ int main(int argc, char *argv[]) {
 		int index = 0;
 		
 
-		XImage finalImage;
+
 		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
 		{
 			cout << "looping on active channels : index " << index << endl;
@@ -832,7 +864,8 @@ int main(int argc, char *argv[]) {
 	
         offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                 	   vsync_multiple);
-	
+	    XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height);
+
 	//cout << "copied to rgb matrix" << endl;
 
 
