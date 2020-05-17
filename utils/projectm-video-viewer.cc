@@ -657,7 +657,7 @@ std::vector<MegaScreenChannel*> getActiveChannelList(){
 //Blends two images of same size
 void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 {
-	cout << "pointerin : " << inputImage << " | pointerout : " << outputImage << endl;
+	//cout << "pointerin : " << inputImage << " | pointerout : " << outputImage << endl;
 	for(int x = 0; x < inputImage->width; x++)
 	{
 		for(int y = 0; y < inputImage->height; y++)
@@ -786,7 +786,7 @@ XImage finalImage = blackImage; //TODO get resolution from config
 
 		count = 0;
 		std::vector<MegaScreenChannel*> activeChannelList = getActiveChannelList();
-		cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
+		//cout << "\nfound " << activeChannelList.size() << " active channel(s)" << endl;
 		
 		int index = 0;
 		
@@ -794,7 +794,7 @@ XImage finalImage = blackImage; //TODO get resolution from config
 
 		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
 		{
-			cout << "looping on active channels : index " << index << endl;
+			//cout << "looping on active channels : index " << index << endl;
 			if((*it)->m_window != 0)
 			{
 				(*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
@@ -836,10 +836,6 @@ XImage finalImage = blackImage; //TODO get resolution from config
 						
 						else //for all other indexes, > 0
 						{
-							cout << "index : " << index << "blending channel images " << endl; 
-							cout << "channel pointer of index 1 : " << *it << endl;
-							cout << "\tindex 1 pointer : " << (*it)->img << endl;
-							cout << "\t\t now index 0 set to : " << &finalImage << endl;
 							blendImage((*it)->img, (*it)->m_alpha, &finalImage);
 						}
 
@@ -854,6 +850,8 @@ XImage finalImage = blackImage; //TODO get resolution from config
 		if(activeChannelList.size() != 0)
 		{
 		    CopyFrame(&finalImage, offscreen_canvas, 1.0); 
+	        //TODO : display virtual screen based on option
+			XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
 		}
 		//TODO : warning : there should be memory leak as we do not destry images above
 
@@ -864,9 +862,9 @@ XImage finalImage = blackImage; //TODO get resolution from config
 	
         offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
                                                 	   vsync_multiple);
-	    XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height);
+													   
 
-	//cout << "copied to rgb matrix" << endl;
+	    
 
 
     }
