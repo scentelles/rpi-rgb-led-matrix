@@ -847,6 +847,16 @@ XImage finalImage = blackImage; //TODO get resolution from config
 	        //TODO : display virtual screen based on option
 			XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
 		}
+		//Delete temporary images
+		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
+		{
+			if((*it)->img != NULL)
+			{
+				XDestroyImage((*it)->img);
+			}
+		}
+			
+
 		//TODO : warning : there should be memory leak as we do not destry images above
 
 	
@@ -868,6 +878,9 @@ XImage finalImage = blackImage; //TODO get resolution from config
     // Feedback for Ctrl-C, but most importantly, force a newline
     // at the output, so that commandline-shell editing is not messed up.
     fprintf(stderr, "Got interrupt. Exiting\n");
+	
+	//TODO : close all channels related apps.
+	
   }
 
   delete matrix;
