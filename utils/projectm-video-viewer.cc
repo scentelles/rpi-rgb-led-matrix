@@ -69,7 +69,8 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 #define CHANNEL_CAMERA_1 		7
 #define CHANNEL_CAMERA_2 		8
 
-
+//Delay between each attempt to find the Xwindow of channel beeing started
+#define RETRY_DELAY 100 
 
 enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5 };
 
@@ -245,22 +246,40 @@ void stopChannel(int index)
 
 }
 	
+void sendMessageToLauncher(std::string message, int param)
+{
+  sock2.connectTo("localhost", PORT_NUM2);
+  if (!sock.isOk()) {
+    cerr << "Error opening port " << PORT_NUM << ": " << sock.errorMessage() << "\n";
+  }
+  else {
+	  cout << "sock2 opened. sending message to start app" << endl;
+
+      Message repl; repl.init(message).pushInt32(param);
+	  PacketWriter pw;
+      pw.init().addMessage(repl);
+      sock2.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
+      cout << "packet OSC sent" << endl;	
+  }
+}
+
+	
 void startVideo(int channelIndex, int videoIndex) 
 {
 	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
 
 	thisChannel->m_type = video;
 
-	std::string command = "./startVideo.sh " + std::to_string(videoIndex);
- 	cout << "Issued command : " << command << endl;
-	//system(command.c_str());
+   	sendMessageToLauncher("/megascreen/startapp/video", videoIndex); 
 
 		
 	while(thisChannel->m_window == 0) 
 	{ 
 	    cout << "trying to find player window" << endl;
 	    thisChannel->m_window = getWindowFromName(display, "MPlayer");
-	    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
+		XFlush(display);
+		XSync(display, false);
 		    
 	}
 	
@@ -288,7 +307,7 @@ void startImage(int channelIndex, int videoIndex)
 	{ 
 	    cout << "trying to find image window" << endl;
 	    thisChannel->m_window = getWindowFromName(display, "gifview");
-	    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
 		    
 	}
 	
@@ -307,18 +326,19 @@ void startProjectM(int channelIndex, int presetIndex) //TODO : refactor to have 
 
 	thisChannel->m_type = visualizer;
 
-	std::string command = "./startProjectm.sh " + std::to_string(presetIndex);
- 	cout << "Issued command : " << command << endl;
-	//system(command.c_str());
+   	sendMessageToLauncher("/megascreen/startapp/visualizer", presetIndex); 
 
-		
+
 	while(thisChannel->m_window == 0) 
 	{ 
 	    cout << "trying to find projectM window" << endl;
-	    thisChannel->m_window = getWindowFromName(display, "projectM");
-	    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	    thisChannel->m_window = getWindowFromName(display, "projectM");//todo : look for proper name
+	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
+		XFlush(display);
+		XSync(display, false);
 		    
 	}
+	cout << "Found window : " << thisChannel->m_window << endl;
 	
 
     XGetWindowAttributes(display, thisChannel->m_window, &gwa);
@@ -335,28 +355,20 @@ void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have
 
 	thisChannel->m_type = slideshow;
 
-  sock2.connectTo("localhost", PORT_NUM2);
-  if (!sock.isOk()) {
-    cerr << "Error opening port " << PORT_NUM << ": " << sock.errorMessage() << "\n";
-  } else {
-	  cout << "sock2 opened. sending message to start app" << endl;
 
-
-
-	      Message repl; repl.init("/megascreen/startapp/slideshow").pushInt32(presetIndex);
-		  PacketWriter pw;
-          pw.init().addMessage(repl);
-          //sock2.sendPacketTo(pw.packetData(), pw.packetSize(), sock.packetOrigin());
-		  cout << "packet OSC sent" << endl;
-
+	sendMessageToLauncher("/megascreen/startapp/slideshow", presetIndex);
+  
 		
 	while(thisChannel->m_window == 0) 
 	{ 
 	    cout << "trying to find impress window" << endl;
 	    thisChannel->m_window = getWindowFromName(display, "slide");//todo : look for proper name
-	    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
+		XFlush(display);
+		XSync(display, false);
 		    
 	}
+	cout << "Found window : " << thisChannel->m_window << endl;
 	
 	
     XResizeWindow(display, thisChannel->m_window , 128, 128); //TODO set according to config of the screen
@@ -366,7 +378,7 @@ void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have
 
 	sleep(1);//TODO resize takes time?
 	thisChannel->m_started =  true;
-  }
+  
 		
 }
 
@@ -403,25 +415,6 @@ void startChannel(int index, MSChannelType channelType, int param)
 	
 
 }
-
-
-/* no longer needed, will be done thru alpha blending
-void switchTargets() 
-{
-	cout << "switching targets" << endl;
-	if((mplayerStarted == true) && (projectMStarted == true))
-	{
-		if(currentTarget == targetVideo)
-			currentTarget = targetProjectM;
-		else
-			currentTarget = targetVideo;
-
-	}
-
-}
-*/
-
-
 
 
 void runOSCServer() {
@@ -712,7 +705,8 @@ XImage *CreateColorImage(Display *display, Visual *visual, unsigned char *image,
 
 int main(int argc, char *argv[]) {
 
-
+	//Required as multiple thread will acces X
+XInitThreads();
 
 	int count = 0;
 

@@ -3,7 +3,7 @@ FILE=$MS_PRESET_PATH/slide$1.odp
 
 if test -f "$FILE"; then
     echo "$FILE exist"
-    loimpress --show --nologo --minimized $FILE
+    loimpress --show --nologo --minimized $FILE&
 
 else
     echo "###################################################################"
