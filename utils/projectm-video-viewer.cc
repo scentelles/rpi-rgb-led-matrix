@@ -58,7 +58,7 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 
 #define KEYCODE XK_q
 
-#define NB_MAX_CHANNEL 			8
+#define NB_MAX_CHANNEL 			10
 #define CHANNEL_VISUALIZER_1 	0
 #define CHANNEL_IMAGE_1 		1
 #define CHANNEL_IMAGE_2 		2
@@ -68,11 +68,19 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 #define CHANNEL_SLIDESWHOW_2	6
 #define CHANNEL_CAMERA_1 		7
 #define CHANNEL_CAMERA_2 		8
+#define CHANNEL_FIXTURE_1 		9
+
 
 //Delay between each attempt to find the Xwindow of channel beeing started
 #define RETRY_DELAY 100 
 
-enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5 };
+
+unsigned char fixtureRed =  0;
+unsigned char fixtureGreen = 0;
+unsigned char fixtureBlue = 0;
+
+
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6 };
 
 class MegaScreenChannel
 {
@@ -263,6 +271,30 @@ void sendMessageToLauncher(std::string message, int param)
   }
 }
 
+
+
+XImage *CreateColorImage(Display *display, Visual *visual, unsigned char *image, int width, int height, unsigned char red, unsigned char green, unsigned char blue )
+{
+    int i, j;
+    unsigned char *image32=(unsigned char *)malloc(width*height*4);
+    unsigned char *p=image32;
+    for(i=0; i<width; i++)
+    {
+        for(j=0; j<height; j++)
+        {
+                *p++=red; // blue
+                *p++=green; // green
+                *p++=blue; // red
+   
+            p++;
+        }
+    }
+    return XCreateImage(display, visual, DefaultDepth(display,DefaultScreen(display)), ZPixmap, 0, (char*)image32, width, height, 32, 0);
+}
+
+
+
+
 	
 void startVideo(int channelIndex, int videoIndex) 
 {
@@ -382,11 +414,67 @@ void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have
 		
 }
 
+void updateFixture(int channelIndex, unsigned char R, unsigned char G, unsigned char B)
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+	Visual *visual=DefaultVisual(display, 0);
+    XImage *tempImage = (CreateColorImage(display, visual, 0, 128, 128, R, G, B));
+	XPutImage(display, thisChannel->m_window, DefaultGC(display, 0), tempImage, 0, 0, 0, 0, tempImage->width, tempImage->height); 
+	XDestroyImage(tempImage);
+
+}
+
+void runFixture()
+{
+	while (1)
+	{
+		updateFixture(CHANNEL_FIXTURE_1, fixtureRed, fixtureGreen, fixtureBlue);
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));		//TODO : update only when value changed
+		//TODO : remove globals !
+
+	}
+}
+
+void startFixture(int channelIndex, int presetIndex) //TODO : refactor to have generic function start
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = fixture;
+
+
+	//TODO : get resolution from config
+	thisChannel->m_window = XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, 128, 128, 1, 0, 0);
+	XStoreName(display, thisChannel->m_window, "FIXTURE");
+	XMapWindow(display, thisChannel->m_window);
+
+		
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
+	Visual *visual=DefaultVisual(display, 0);
+    XImage tempImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 0, 255));
+	
+	sleep(1);//TODO : need to find a way to sync with Window readiness
+	XSync(display, false);
+	XPutImage(display, thisChannel->m_window, DefaultGC(display, 0), &tempImage, 0, 0, 0, 0, tempImage.width, tempImage.height); 
+    cout << "image set in fixture init" << endl; 
+
+	thisChannel->m_started =  true;
+	
+	std::thread fixtureThread (runFixture);   
+    fixtureThread.detach();
+
+
+		
+}
+
+
 
 void startChannel(int index, MSChannelType channelType, int param)
 {
 	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[index]);
-	
+	cout << "Channel index : " << index << endl;
 	if(thisChannel->m_started == true)
 	{
 		cout << "CHANNEL ALREADY STARTED. STOPPING IT" << endl;
@@ -411,10 +499,16 @@ void startChannel(int index, MSChannelType channelType, int param)
 			cout << "setting up slideshow channel" << endl;
 			startSlideshow(index, param);
 			break;	
+		case fixture:
+			cout << "setting up fixture channel" << endl;
+			startFixture(index, param);
+			break;	
 	}
-	
-
 }
+
+
+
+
 
 
 void runOSCServer() {
@@ -443,6 +537,21 @@ void runOSCServer() {
 		
 		MegaScreenChannelArray[CHANNEL_VIDEO_1].m_alpha = tempF;
 	  }
+	  if (msg->match("/1/rotary1").popFloat(tempF)) {
+		
+		fixtureRed = 255 * tempF;
+	    cout << "Setting ficture Red : " << fixtureRed << endl;
+	  }	  
+	  if (msg->match("/1/rotary2").popFloat(tempF)) {
+		
+		fixtureGreen = 255 * tempF;
+	    cout << "Setting ficture Green : " << fixtureGreen << endl;
+	  }		  
+	  if (msg->match("/1/rotary3").popFloat(tempF)) {
+		
+		fixtureBlue = 255 * tempF;
+	    cout << "Setting ficture Blue : " << fixtureBlue << endl;
+	  }	
 	  if (msg->match("/1/fader2").popFloat(tempF)) {
 		
 		//alphaChannel1 = tempF;
@@ -481,6 +590,11 @@ void runOSCServer() {
 	  if (iarg >= 40 && iarg < 50)
 	  {
 	  	startChannel(CHANNEL_SLIDESWHOW_1, slideshow, iarg - 40);
+	  	continue;
+	  }
+	  if (iarg >= 50 && iarg < 60)
+	  {
+	  	startChannel(CHANNEL_FIXTURE_1, fixture, iarg - 50);
 	  	continue;
 	  }
 	  //else {
@@ -682,31 +796,14 @@ void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 
 }
 
-XImage *CreateColorImage(Display *display, Visual *visual, unsigned char *image, int width, int height, unsigned char red, unsigned char green, unsigned char blue )
-{
-    int i, j;
-    unsigned char *image32=(unsigned char *)malloc(width*height*4);
-    unsigned char *p=image32;
-    for(i=0; i<width; i++)
-    {
-        for(j=0; j<height; j++)
-        {
-                *p++=red; // blue
-                *p++=green; // green
-                *p++=blue; // red
-   
-            p++;
-        }
-    }
-    return XCreateImage(display, visual, DefaultDepth(display,DefaultScreen(display)), ZPixmap, 0, (char*)image32, width, height, 32, 0);
-}
+
 
 
 
 int main(int argc, char *argv[]) {
 
 	//Required as multiple thread will acces X
-XInitThreads();
+	XInitThreads();
 
 	int count = 0;
 
@@ -763,7 +860,9 @@ Visual *visual=DefaultVisual(display, 0);
 
 XImage blackImage = *(CreateColorImage(display, visual, 0, 128, 128, 0, 0, 0));
 XImage whiteImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 255, 255));
-XImage finalImage = blackImage; //TODO get resolution from config
+XImage finalImage = whiteImage; //TODO get resolution from config
+
+
 
 //Main loop
 
@@ -845,8 +944,12 @@ XImage finalImage = blackImage; //TODO get resolution from config
 		{
 		    CopyFrame(&finalImage, offscreen_canvas, 1.0); 
 	        //TODO : display virtual screen based on option
-			XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
+			
 		}
+		XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
+
+
+
 		//Delete temporary images
 		for(std::vector<MegaScreenChannel*>::iterator it = activeChannelList.begin() ; it != activeChannelList.end(); ++it)
 		{
@@ -856,10 +959,6 @@ XImage finalImage = blackImage; //TODO get resolution from config
 			}
 		}
 			
-
-		//TODO : warning : there should be memory leak as we do not destry images above
-
-	
 
 	}
 
