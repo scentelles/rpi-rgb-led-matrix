@@ -67,7 +67,7 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 #define CHANNEL_SLIDESWHOW_1	5
 #define CHANNEL_SLIDESWHOW_2	6
 #define CHANNEL_CAMERA_1 		7
-#define CHANNEL_CAMERA_2 		8
+#define CHANNEL_UDP_STREAM 		8
 #define CHANNEL_FIXTURE_1 		9
 
 
@@ -80,7 +80,7 @@ unsigned char fixtureGreen = 0;
 unsigned char fixtureBlue = 0;
 
 
-enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6 };
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6, udp_stream = 7 };
 
 class MegaScreenChannel
 {
@@ -324,6 +324,35 @@ void startVideo(int channelIndex, int videoIndex)
 		
 }
 
+void startUDPStream(int channelIndex) 
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = udp_stream;
+
+   	sendMessageToLauncher("/megascreen/startapp/udpstream", 0); 
+
+		
+	while(thisChannel->m_window == 0) 
+	{ 
+	    cout << "trying to find UDP window" << endl;
+	    thisChannel->m_window = getWindowFromName(display, "UDP");
+	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
+		XFlush(display);
+		XSync(display, false);
+		    
+	}
+	
+
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
+	thisChannel->m_started =  true;
+		
+}
+
+
 void startImage(int channelIndex, int videoIndex) 
 {
 	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
@@ -503,6 +532,10 @@ void startChannel(int index, MSChannelType channelType, int param)
 			cout << "setting up fixture channel" << endl;
 			startFixture(index, param);
 			break;	
+		case udp_stream:
+			cout << "setting up UDP stream channel" << endl;
+			startUDPStream(index);
+			break;	
 	}
 }
 
@@ -597,6 +630,12 @@ void runOSCServer() {
 	  	startChannel(CHANNEL_FIXTURE_1, fixture, iarg - 50);
 	  	continue;
 	  }
+	  if (iarg >= 60 && iarg < 70)
+	  {
+	  	startChannel(CHANNEL_UDP_STREAM, udp_stream, iarg - 60);
+	  	continue;
+	  }
+
 	  //else {
            // cout << "Server: unhandled message: " << *msg << "\n";
           }

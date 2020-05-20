@@ -65,6 +65,18 @@ void runOSCServer() {
 	      system(command.c_str()); 
      
 		 }		 
+
+		//Video launch
+         if (msg->match("/megascreen/startapp/udpstream").popInt32(iarg).isOkNoMoreArgs()) {
+            cout << "Server: received video request " << iarg << " from " << sock.packetOrigin() << endl;
+ 
+         cout << "Server: received start udp stream video "  << iarg << " app request from " << sock.packetOrigin() << endl;
+	      
+	      std::string command = "./startUDPStream.sh " + std::to_string(iarg);
+ 	      cout << "Issued command : " << command << endl;
+	      system(command.c_str()); 
+     
+		 }		
 		 
         }
       }
