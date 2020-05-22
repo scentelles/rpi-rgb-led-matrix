@@ -88,6 +88,8 @@ class MegaScreenChannel
 	Window m_window 	= 0;
 	int m_width 		= 0;
 	int m_height 		= 0;
+	int x_offset		= 0;
+	int y_offset		= 0;
 	float m_alpha		= 1.0;
 	bool m_started		= false;
 	MSChannelType m_type	= undefined;
@@ -431,13 +433,18 @@ void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have
 	}
 	cout << "Found window : " << thisChannel->m_window << endl;
 	
-	
-    XResizeWindow(display, thisChannel->m_window , 128, 128); //TODO set according to config of the screen
-    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-    thisChannel->m_width  = gwa.width;
-    thisChannel->m_height = gwa.height;
+	int xSlideOffset = 0;
+	int ySlideOffset= 0;
 
-	sleep(1);//TODO resize takes time?
+	sleep(1);//TODO resize takes time?	
+    XResizeWindow(display, thisChannel->m_window , 128 + xSlideOffset*4, 128+ySlideOffset); //TODO set according to config of the screen
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+    thisChannel->m_width  = gwa.width - xSlideOffset;
+    thisChannel->m_height = gwa.height - ySlideOffset * 2;
+	thisChannel->x_offset = xSlideOffset*2;
+	thisChannel->y_offset = ySlideOffset;
+	
+	sleep(4);//TODO resize takes time?
 	thisChannel->m_started =  true;
   
 		
@@ -899,7 +906,7 @@ Visual *visual=DefaultVisual(display, 0);
 
 XImage blackImage = *(CreateColorImage(display, visual, 0, 128, 128, 0, 0, 0));
 XImage whiteImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 255, 255));
-XImage finalImage = whiteImage; //TODO get resolution from config
+XImage finalImage = blackImage; //TODO get resolution from config
 
 
 
@@ -929,14 +936,15 @@ XImage finalImage = whiteImage; //TODO get resolution from config
 			//cout << "looping on active channels : index " << index << endl;
 			if((*it)->m_window != 0)
 			{
-				(*it)->img = XGetImage(display,(*it)->m_window,0,0,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
+				(*it)->img = XGetImage(display,(*it)->m_window,(*it)->x_offset,(*it)->y_offset,(*it)->m_width,(*it)->m_height,XAllPlanes(),ZPixmap);
 				if((*it)->img == NULL)
 				{
 					
 					cout << "WARNING : image pointer null while channel started. Resetting channel state" << endl;
 					
-					(*it)->m_started = false;
-					(*it)->m_window = 0;
+					//for slideshows, it seems image ptr null is returned in the first frames. TODO : fix
+					//(*it)->m_started = false;
+					//(*it)->m_window = 0;
 				}
 				else
 				{
