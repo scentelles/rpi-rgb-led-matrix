@@ -1,3 +1,6 @@
+NDI_SDK_DIRECTORY="/home/pi/Project/NDISDK/NDISDKLINUX"
+
+
 CXXFLAGS=-Wall -O3 -g -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64
 #for profiling
 #CXXFLAGS=-Wall -pg -O3 -g -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64
@@ -11,12 +14,12 @@ OPTIONAL_BINARIES=video-viewer projectm-video-viewer
 # Where our library resides. You mostly only need to change the
 # RGB_LIB_DISTRIBUTION, this is where the library is checked out.
 RGB_LIB_DISTRIBUTION=..
-RGB_INCDIR=$(RGB_LIB_DISTRIBUTION)/include
+RGB_INCDIR=$(RGB_LIB_DISTRIBUTION)/include $(NDI_SDK_DIRECTORY)/include
 RGB_LIBDIR=$(RGB_LIB_DISTRIBUTION)/lib
 RGB_LIBRARY_NAME=rgbmatrix
 RGB_LIBRARY=$(RGB_LIBDIR)/lib$(RGB_LIBRARY_NAME).a
 
-LDFLAGS+=-L$(RGB_LIBDIR) -l$(RGB_LIBRARY_NAME) -lrt -lm -lpthread -lX11 
+LDFLAGS+=-L$(RGB_LIBDIR) -L$(NDI_SDK_DIRECTORY)/lib/arm-linux-gnueabihf  -l$(RGB_LIBRARY_NAME) -lrt -lm -lpthread -lX11 -lndi
 
 # Imagemagic flags, only needed if actually compiled.
 MAGICK_CXXFLAGS?=`GraphicsMagick++-config --cppflags --cxxflags`

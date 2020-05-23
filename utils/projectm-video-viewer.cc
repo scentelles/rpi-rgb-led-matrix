@@ -24,7 +24,9 @@
 
 #include <thread>         // std::thread
 
+#include <Processing.NDI.Lib.h>
 
+#include <sched.h>
 
 using std::endl;
 using std::cout;
@@ -58,7 +60,7 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 
 #define KEYCODE XK_q
 
-#define NB_MAX_CHANNEL 			10
+#define NB_MAX_CHANNEL 			11
 #define CHANNEL_VISUALIZER_1 	0
 #define CHANNEL_IMAGE_1 		1
 #define CHANNEL_IMAGE_2 		2
@@ -68,7 +70,8 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 #define CHANNEL_SLIDESWHOW_2	6
 #define CHANNEL_CAMERA_1 		7
 #define CHANNEL_UDP_STREAM 		8
-#define CHANNEL_FIXTURE_1 		9
+#define CHANNEL_NDI_STREAM 		9
+#define CHANNEL_FIXTURE_1 		10
 
 
 //Delay between each attempt to find the Xwindow of channel beeing started
@@ -80,7 +83,7 @@ unsigned char fixtureGreen = 0;
 unsigned char fixtureBlue = 0;
 
 
-enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6, udp_stream = 7 };
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6, udp_stream = 7, ndi_stream };
 
 class MegaScreenChannel
 {
@@ -136,6 +139,53 @@ XKeyEvent createKeyEvent(Display *display, Window &win,
 
 	return event;
 }
+
+
+
+
+void set_realtime_priority() {
+     int ret;
+ 
+     // We'll operate on the currently running thread.
+     pthread_t this_thread = pthread_self();
+
+
+
+     // struct sched_param is used to store the scheduling priority
+     struct sched_param params;
+ 
+     // We'll set the priority to the maximum.
+     params.sched_priority = sched_get_priority_max(SCHED_IDLE);
+  std::cout << "Trying to set thread realtime prio = " << params.sched_priority << std::endl;
+ 
+     // Attempt to set thread real-time priority to the SCHED_FIFO policy
+     ret = pthread_setschedparam(this_thread, SCHED_IDLE, &params);
+     if (ret != 0) {
+         // Print the error
+         std::cout << "Unsuccessful in setting thread realtime prio" << std::endl;
+         return;     
+     }
+
+ // Now verify the change in thread priority
+     int policy = 0;
+     ret = pthread_getschedparam(this_thread, &policy, &params);
+     if (ret != 0) {
+         std::cout << "Couldn't retrieve real-time scheduling paramers" << std::endl;
+         return;
+     }
+ 
+     // Check the correct policy was applied
+     if(policy != SCHED_IDLE) {
+         std::cout << "Scheduling is NOT SCHED_FIFO!" << std::endl;
+     } else {
+         std::cout << "SCHED_FIFO OK" << std::endl;
+     }
+ 
+     // Print thread scheduling priority
+     std::cout << "Thread priority is " << params.sched_priority << std::endl; 
+}
+
+
 
 Window *getWindowList(Display *disp, unsigned long *len) {
     Atom prop = XInternAtom(disp,"_NET_CLIENT_LIST",False), type;
@@ -507,6 +557,184 @@ void startFixture(int channelIndex, int presetIndex) //TODO : refactor to have g
 
 
 
+
+int runNDIReceiver()
+{
+
+	
+	set_realtime_priority();
+	
+int X = 512;
+int Y = 288;
+Window windowNDI=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, X, Y, 1, 0, 0);
+XStoreName(display, windowNDI, "NDI");
+
+
+Visual *visual2=DefaultVisual(display, 0);
+
+      // We want to get MapNotify events
+
+      XSelectInput(display, windowNDI, StructureNotifyMask);
+
+      XMapWindow(display, windowNDI);
+
+      // Wait for the MapNotify event
+
+      for(;;) {
+        XEvent e;
+        XNextEvent(display, &e);
+        if (e.type == MapNotify)
+          break;
+      }
+
+XImage blackImage2 = *(CreateColorImage(display, visual2, 0, X, Y, 255, 255, 0));
+XImage finalImage = blackImage2; //TODO get resolution from config
+int a;	
+	
+	
+	
+	
+	if (!NDIlib_initialize()) return 0;
+	
+	// Create a finder
+	NDIlib_find_instance_t pNDI_find = NDIlib_find_create_v2();
+	if (!pNDI_find) return 0;
+
+	// Wait until there is one source
+	uint32_t no_sources = 0;
+	const NDIlib_source_t* p_sources = NULL;
+	while (!no_sources)
+	{	// Wait until the sources on the nwtork have changed
+		printf("Looking for sources ...\n");
+		NDIlib_find_wait_for_sources(pNDI_find, 1000/* One second */);
+		p_sources = NDIlib_find_get_current_sources(pNDI_find, &no_sources);
+	}
+
+	// We now have at least one source, so we create a receiver to look at it.
+	
+	
+	printf("source found ...\n");
+	
+	NDIlib_recv_create_v3_t setting;
+	setting.color_format = NDIlib_recv_color_format_BGRX_BGRA;
+	setting.bandwidth = NDIlib_recv_bandwidth_lowest;
+	
+	NDIlib_recv_instance_t pNDI_recv = NDIlib_recv_create_v3(&setting);
+	if (!pNDI_recv) return 0;
+
+	// Connect to our sources
+	NDIlib_recv_connect(pNDI_recv, p_sources + 0);
+
+	// Destroy the NDI finder. We needed to have access to the pointers to p_sources[0]
+	NDIlib_find_destroy(pNDI_find);	
+
+
+
+	unsigned char* data;
+
+	printf("starting to loop ...\n");
+	while (1) //TODO : catch interrupt
+	{	// The descriptors
+		NDIlib_video_frame_v2_t video_frame;
+		NDIlib_audio_frame_v2_t audio_frame;
+
+		switch (NDIlib_recv_capture_v2(pNDI_recv, &video_frame, NULL, nullptr, 5000))
+		{	// No data
+			case NDIlib_frame_type_none:
+				printf("No data received.\n");
+				break;
+
+			// Video data
+			case NDIlib_frame_type_video:
+				//printf("Video data received (%dx%d).\n", video_frame.xres, video_frame.yres);
+				//cout << "\tCPU NDI : " << sched_getcpu() << endl;
+				
+				//display here video_frame
+				data = video_frame.p_data;
+				//printf("Frame size : %d\n", video_frame.line_stride_in_bytes);
+				//printf("Frame fourCC : %d\n", video_frame.FourCC);
+				
+				//printf("going thru loop width : %d\n", finalImage.width);
+				for(int x = 0; x < finalImage.width; x++)
+				{
+					for(int y = 0; y < finalImage.height; y++)
+					{
+						//printf ("x : %d, y : %d", x, y);
+					    int indexB = (y*finalImage.width + x)*4;
+					    int indexG = (y*finalImage.width + x)*4 + 1;
+ 					    int indexR = (y*finalImage.width + x)*4 + 2;
+
+									XColor colors;
+									unsigned long red_mask   = finalImage.red_mask;
+									unsigned long green_mask = finalImage.green_mask;
+									unsigned long blue_mask  = finalImage.blue_mask;						
+										  
+									unsigned char B1 = data[indexB];
+								    unsigned char G1 = data[indexG];
+									unsigned char R1 = data[indexR];      
+									colors.pixel = 65536 * R1 + 256 * G1 + B1 ; 
+									XPutPixel(&finalImage, x, y, colors.pixel);
+
+							
+					}
+				}
+
+
+				
+				XPutImage(display, windowNDI, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
+				XFlush(display);
+				
+				NDIlib_recv_free_video_v2(pNDI_recv, &video_frame);
+				break;
+
+			// Audio data
+			case NDIlib_frame_type_audio:
+				printf("Audio data received (%d samples).\n", audio_frame.no_samples);
+				//NDIlib_recv_free_audio_v2(pNDI_recv, &audio_frame);
+				break;
+			default:
+				printf("unsupported frame type\n");
+		}
+	}
+}
+
+
+void startNDIStream(int channelIndex) //TODO : refactor to have generic function start
+{
+	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+
+	thisChannel->m_type = ndi_stream;
+
+	//std::thread ndiThread (runNDIReceiver);   
+    //ndiThread.detach();
+
+		
+	while(thisChannel->m_window == 0) 
+	{ 
+	    cout << "trying to find NDI window" << endl;
+	    thisChannel->m_window = getWindowFromName(display, "NDI");
+	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
+		    
+	}
+	
+
+    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
+  //  thisChannel->m_width  = gwa.width;
+  //  thisChannel->m_height = gwa.height;
+    //TODO perf issue when getting pixels on full frame.
+	thisChannel->m_width  = 128;
+    thisChannel->m_height = 128;
+
+
+
+	thisChannel->m_started =  true;
+	
+
+
+		
+}
+
+
 void startChannel(int index, MSChannelType channelType, int param)
 {
 	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[index]);
@@ -542,6 +770,10 @@ void startChannel(int index, MSChannelType channelType, int param)
 		case udp_stream:
 			cout << "setting up UDP stream channel" << endl;
 			startUDPStream(index);
+			break;	
+		case ndi_stream:
+			cout << "setting up NDI stream channel" << endl;
+			startNDIStream(index);
 			break;	
 	}
 }
@@ -642,7 +874,11 @@ void runOSCServer() {
 	  	startChannel(CHANNEL_UDP_STREAM, udp_stream, iarg - 60);
 	  	continue;
 	  }
-
+	  if (iarg >= 70 && iarg < 80)
+	  {
+	  	startChannel(CHANNEL_NDI_STREAM, ndi_stream, iarg - 70);
+	  	continue;
+	  }
 	  //else {
            // cout << "Server: unhandled message: " << *msg << "\n";
           }
@@ -749,7 +985,7 @@ int catcher( Display *disp, XErrorEvent *xe )
 	
 	
 	//TODO : exit to have proper gmon file generation when profiling 
-	//exit(0);
+	exit(0);
         return 0;
 }
 
@@ -841,6 +1077,16 @@ void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 							
 
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -989,6 +1235,7 @@ XImage finalImage = blackImage; //TODO get resolution from config
 		
 		if(activeChannelList.size() != 0)
 		{
+			//cout << "CPU rgb : " << sched_getcpu() << endl;
 		    CopyFrame(&finalImage, offscreen_canvas, 1.0); 
 	        //TODO : display virtual screen based on option
 			
@@ -1026,6 +1273,12 @@ XImage finalImage = blackImage; //TODO get resolution from config
     fprintf(stderr, "Got interrupt. Exiting\n");
 	
 	//TODO : close all channels related apps.
+	
+		// Destroy the receiver
+	//NDIlib_recv_destroy(pNDI_recv); //TODO : to be done in corresponding thread
+
+	// Not required, but nice
+	//NDIlib_destroy(); TODO : to be done in corresponding thread
 	
   }
 
