@@ -28,6 +28,7 @@
 
 #include <sched.h>
 
+
 using std::endl;
 using std::cout;
 using std::cerr;
@@ -46,7 +47,7 @@ bool mplayerStarted = false;
 bool projectMStarted = false;
 bool imageStarted = false;
 
-#define UPDATE_MULTIPLE 4
+#define UPDATE_MULTIPLE 2
 
 #define OSCPKT_OSTREAM_OUTPUT
 #include "oscpkt/oscpkt.hh"
@@ -83,7 +84,7 @@ unsigned char fixtureGreen = 0;
 unsigned char fixtureBlue = 0;
 
 
-enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6, udp_stream = 7, ndi_stream };
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6, udp_stream = 7, ndi_stream = 8};
 
 class MegaScreenChannel
 {
@@ -106,6 +107,7 @@ MegaScreenChannel MegaScreenChannelArray[NB_MAX_CHANNEL];
     	Display *display;
 	Window winRoot = 0;
 	
+	RGBMatrix *matrix;
 
 
 
@@ -142,8 +144,51 @@ XKeyEvent createKeyEvent(Display *display, Window &win,
 
 
 
-
 void set_realtime_priority() {
+     int ret;
+ 
+     // We'll operate on the currently running thread.
+     pthread_t this_thread = pthread_self();
+
+
+
+     // struct sched_param is used to store the scheduling priority
+     struct sched_param params;
+ 
+     // We'll set the priority to the maximum.
+     params.sched_priority = sched_get_priority_max(SCHED_RR);
+  std::cout << "Trying to set thread realtime prio = " << params.sched_priority << std::endl;
+ 
+     // Attempt to set thread real-time priority to the SCHED_RR policy
+     ret = pthread_setschedparam(this_thread, SCHED_RR, &params);
+     if (ret != 0) {
+         // Print the error
+         std::cout << "Unsuccessful in setting thread realtime prio" << std::endl;
+         return;     
+     }
+
+ // Now verify the change in thread priority
+     int policy = 0;
+     ret = pthread_getschedparam(this_thread, &policy, &params);
+     if (ret != 0) {
+         std::cout << "Couldn't retrieve real-time scheduling paramers" << std::endl;
+         return;
+     }
+ 
+     // Check the correct policy was applied
+     if(policy != SCHED_RR) {
+         std::cout << "Scheduling is NOT SCHED_RR!" << std::endl;
+     } else {
+         std::cout << "SCHED_RR OK" << std::endl;
+     }
+ 
+     // Print thread scheduling priority
+     std::cout << "Thread priority is " << params.sched_priority << std::endl; 
+}
+
+
+
+void set_low_priority() {
      int ret;
  
      // We'll operate on the currently running thread.
@@ -158,7 +203,7 @@ void set_realtime_priority() {
      params.sched_priority = sched_get_priority_max(SCHED_IDLE);
   std::cout << "Trying to set thread realtime prio = " << params.sched_priority << std::endl;
  
-     // Attempt to set thread real-time priority to the SCHED_FIFO policy
+     // Attempt to set thread real-time priority to the SCHED_IDLE policy
      ret = pthread_setschedparam(this_thread, SCHED_IDLE, &params);
      if (ret != 0) {
          // Print the error
@@ -176,15 +221,14 @@ void set_realtime_priority() {
  
      // Check the correct policy was applied
      if(policy != SCHED_IDLE) {
-         std::cout << "Scheduling is NOT SCHED_FIFO!" << std::endl;
+         std::cout << "Scheduling is NOT SCHED_IDLE!" << std::endl;
      } else {
-         std::cout << "SCHED_FIFO OK" << std::endl;
+         std::cout << "SCHED_IDLE OK" << std::endl;
      }
  
      // Print thread scheduling priority
      std::cout << "Thread priority is " << params.sched_priority << std::endl; 
 }
-
 
 
 Window *getWindowList(Display *disp, unsigned long *len) {
@@ -562,8 +606,8 @@ int runNDIReceiver()
 {
 
 	
-	set_realtime_priority();
-	
+	set_low_priority();
+	//set_realtime_priority();
 int X = 512;
 int Y = 288;
 Window windowNDI=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, X, Y, 1, 0, 0);
@@ -617,7 +661,9 @@ int a;
 	
 	NDIlib_recv_create_v3_t setting;
 	setting.color_format = NDIlib_recv_color_format_BGRX_BGRA;
+	//setting.color_format = NDIlib_recv_color_format_fastest;
 	setting.bandwidth = NDIlib_recv_bandwidth_lowest;
+	//setting.bandwidth = NDIlib_recv_bandwidth_highest;
 	
 	NDIlib_recv_instance_t pNDI_recv = NDIlib_recv_create_v3(&setting);
 	if (!pNDI_recv) return 0;
@@ -660,6 +706,7 @@ int a;
 					for(int y = 0; y < finalImage.height; y++)
 					{
 						//printf ("x : %d, y : %d", x, y);
+						//int indexB = (y*finalImage.width + x)*2+1;
 					    int indexB = (y*finalImage.width + x)*4;
 					    int indexG = (y*finalImage.width + x)*4 + 1;
  					    int indexR = (y*finalImage.width + x)*4 + 2;
@@ -670,9 +717,12 @@ int a;
 									unsigned long blue_mask  = finalImage.blue_mask;						
 										  
 									unsigned char B1 = data[indexB];
-								    unsigned char G1 = data[indexG];
+								    //unsigned char G1 = 0;
+									//unsigned char R1 = 0;				
+									unsigned char G1 = data[indexG];
 									unsigned char R1 = data[indexR];      
-									colors.pixel = 65536 * R1 + 256 * G1 + B1 ; 
+									colors.pixel = 65536 * R1 + 256 * G1 + B1 ;
+									//colors.pixel = 65536 * B1 + 256 * B1 + B1 ; 
 									XPutPixel(&finalImage, x, y, colors.pixel);
 
 							
@@ -682,7 +732,7 @@ int a;
 
 				
 				XPutImage(display, windowNDI, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
-				XFlush(display);
+				//XFlush(display);
 				
 				NDIlib_recv_free_video_v2(pNDI_recv, &video_frame);
 				break;
@@ -705,8 +755,8 @@ void startNDIStream(int channelIndex) //TODO : refactor to have generic function
 
 	thisChannel->m_type = ndi_stream;
 
-	//std::thread ndiThread (runNDIReceiver);   
-    //ndiThread.detach();
+	std::thread ndiThread (runNDIReceiver);   
+    ndiThread.detach();
 
 		
 	while(thisChannel->m_window == 0) 
@@ -1084,57 +1134,11 @@ void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 
 
 
+int runMatrix()
+{
 
-
-
-
-
-
-
-
-int main(int argc, char *argv[]) {
-
-	//Required as multiple thread will acces X
-	XInitThreads();
-
-	int count = 0;
-
-//X11 related
-
-  display = XOpenDisplay(0);
-  winRoot = XDefaultRootWindow(display);
-  XSetErrorHandler( catcher ); 
+set_realtime_priority();
 	
-
-//Start OSC server
-  std::thread ocsThread (runOSCServer);     
-  
-  
-//RGB Matrix
-  RGBMatrix::Options matrix_options;
-  rgb_matrix::RuntimeOptions runtime_opt;
-  if (!rgb_matrix::ParseOptionsFromFlags(&argc, &argv,
-                                         &matrix_options, &runtime_opt)) {
-    return usage(argv[0]);
-  }
-
-  int vsync_multiple = 1;
-
-  int opt;
-  while ((opt = getopt(argc, argv, "vO:R:Lfc:s:FV:")) != -1) {
-    switch (opt) {
-    default:
-      return usage(argv[0]);
-    }
-  }
-
-
-
-  RGBMatrix *matrix = CreateMatrixFromOptions(matrix_options, runtime_opt);
-  if (matrix == NULL) {
-    return 1;
-  }
-
   FrameCanvas *offscreen_canvas = matrix->CreateFrameCanvas();
 
 
@@ -1155,7 +1159,9 @@ XImage whiteImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 255, 2
 XImage finalImage = blackImage; //TODO get resolution from config
 
 
-
+  int vsync_multiple = 1;
+  
+  	int count = 0;
 //Main loop
 
   
@@ -1237,10 +1243,11 @@ XImage finalImage = blackImage; //TODO get resolution from config
 		{
 			//cout << "CPU rgb : " << sched_getcpu() << endl;
 		    CopyFrame(&finalImage, offscreen_canvas, 1.0); 
-	        //TODO : display virtual screen based on option
+	       
 			
 		}
-		XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
+		 //TODO : display virtual screen based on option
+		//XPutImage(display, window, DefaultGC(display, 0), &finalImage, 0, 0, 0, 0, finalImage.width, finalImage.height); 
 
 
 
@@ -1283,8 +1290,68 @@ XImage finalImage = blackImage; //TODO get resolution from config
   }
 
   delete matrix;
+}
 
 
+
+
+
+
+
+int main(int argc, char *argv[]) {
+
+//RGB Matrix
+  RGBMatrix::Options matrix_options;
+  rgb_matrix::RuntimeOptions runtime_opt;
+  if (!rgb_matrix::ParseOptionsFromFlags(&argc, &argv,
+                                         &matrix_options, &runtime_opt)) {
+    return usage(argv[0]);
+  }
+
+
+
+  int opt;
+  while ((opt = getopt(argc, argv, "vO:R:Lfc:s:FV:")) != -1) {
+    switch (opt) {
+    default:
+      return usage(argv[0]);
+    }
+  }
+
+
+
+  matrix = CreateMatrixFromOptions(matrix_options, runtime_opt);
+  if (matrix == NULL) {
+    return 1;
+  }
+	
+	
+	
+	//Required as multiple thread will acces X
+	XInitThreads();
+
+
+
+//X11 related
+
+  display = XOpenDisplay(0);
+  winRoot = XDefaultRootWindow(display);
+  XSetErrorHandler( catcher ); 
+	
+
+//Start OSC server
+  std::thread ocsThread (runOSCServer);     
+  ocsThread.detach();
+  
+//Start MATRIX loop
+  std::thread matrixThread (runMatrix);  
+  matrixThread.detach();
+
+  while(1)
+  {
+	  sleep(1);
+  }
+  
 
   return 0;
 }
