@@ -75,6 +75,11 @@ const int PORT_NUM2 = 7702; //TODO : get this from args
 #define CHANNEL_FIXTURE_1 		10
 
 
+
+std::string channelToWindowName[NB_MAX_CHANNEL];
+
+
+
 //Delay between each attempt to find the Xwindow of channel beeing started
 #define RETRY_DELAY 100 
 
@@ -84,7 +89,7 @@ unsigned char fixtureGreen = 0;
 unsigned char fixtureBlue = 0;
 
 
-enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, slideshow = 4, camera = 5, fixture = 6, udp_stream = 7, ndi_stream = 8};
+enum MSChannelType { undefined = 0, visualizer = 1, video = 2, image = 3, camera = 5, fixture = 6, udp_stream = 7, ndi_stream = 8};
 
 class MegaScreenChannel
 {
@@ -347,160 +352,59 @@ XImage *CreateColorImage(Display *display, Visual *visual, unsigned char *image,
 }
 
 
-
-
-	
-void startVideo(int channelIndex, int videoIndex) 
+void startChannelType(MSChannelType channelType, int channelIndex, int param)
 {
 	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
+	std::string windowName = channelToWindowName[channelIndex];
+	thisChannel->m_type = channelType;
+    std::string command;
+	
+	
+ 
+	  
+	  
+	switch(channelType)
+	{
+		case video:
+			sendMessageToLauncher("/megascreen/startapp/video", param); 
+			break;
+		case udp_stream:
+		    sendMessageToLauncher("/megascreen/startapp/udpstream", 0); 
+			break;
+		case image:
+			command = "./startImage.sh " + std::to_string(param);
+			cout << "Issued command : " << command << endl;
+			system(command.c_str());
+			break;
+		case visualizer:
+			sendMessageToLauncher("/megascreen/startapp/visualizer", param); 
+			break;
 
-	thisChannel->m_type = video;
 
-   	sendMessageToLauncher("/megascreen/startapp/video", videoIndex); 
-
-		
-	while(thisChannel->m_window == 0) 
-	{ 
-	    cout << "trying to find player window" << endl;
-	    thisChannel->m_window = getWindowFromName(display, "MPlayer");
-	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
-		XFlush(display);
-		XSync(display, false);
-		    
+		default:
+			cout << "Warning when starting channel : channel type not managed : " <<  channelType << endl;
 	}
 	
 
-    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-    thisChannel->m_width  = gwa.width;
-    thisChannel->m_height = gwa.height;
-
-	thisChannel->m_started =  true;
-		
-}
-
-void startUDPStream(int channelIndex) 
-{
-	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
-
-	thisChannel->m_type = udp_stream;
-
-   	sendMessageToLauncher("/megascreen/startapp/udpstream", 0); 
-
-		
-	while(thisChannel->m_window == 0) 
-	{ 
-	    cout << "trying to find UDP window" << endl;
-	    thisChannel->m_window = getWindowFromName(display, "UDP");
-	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
-		XFlush(display);
-		XSync(display, false);
-		    
-	}
-	
-
-    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-    thisChannel->m_width  = gwa.width;
-    thisChannel->m_height = gwa.height;
-
-	thisChannel->m_started =  true;
-		
-}
-
-
-void startImage(int channelIndex, int videoIndex) 
-{
-	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
-
-	thisChannel->m_type = image;
-
-	std::string command = "./startImage.sh " + std::to_string(videoIndex);
- 	cout << "Issued command : " << command << endl;
-	system(command.c_str());
-
-		
-	while(thisChannel->m_window == 0) 
-	{ 
-	    cout << "trying to find image window" << endl;
-	    thisChannel->m_window = getWindowFromName(display, "gifview");
-	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
-		    
-	}
-	
-
-    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-    thisChannel->m_width  = gwa.width;
-    thisChannel->m_height = gwa.height;
-
-	thisChannel->m_started =  true;
-}
-
-
-void startProjectM(int channelIndex, int presetIndex) //TODO : refactor to have generic function start
-{
-	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
-
-	thisChannel->m_type = visualizer;
-
-   	sendMessageToLauncher("/megascreen/startapp/visualizer", presetIndex); 
-
-
-	while(thisChannel->m_window == 0) 
-	{ 
-	    cout << "trying to find projectM window" << endl;
-	    thisChannel->m_window = getWindowFromName(display, "projectM");//todo : look for proper name
-	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
-		XFlush(display);
-		XSync(display, false);
-		    
-	}
-	cout << "Found window : " << thisChannel->m_window << endl;
-	
-
-    XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-    thisChannel->m_width  = gwa.width;
-    thisChannel->m_height = gwa.height;
-
-	thisChannel->m_started =  true;
-		
-}
-
-void startSlideshow(int channelIndex, int presetIndex) //TODO : refactor to have generic function start
-{
-	MegaScreenChannel * thisChannel = &(MegaScreenChannelArray[channelIndex]);
-
-	thisChannel->m_type = slideshow;
-
-
-	sendMessageToLauncher("/megascreen/startapp/slideshow", presetIndex);
   
-		
+	
 	while(thisChannel->m_window == 0) 
 	{ 
-	    cout << "trying to find impress window" << endl;
-	    thisChannel->m_window = getWindowFromName(display, "slide");//todo : look for proper name
+	    cout << "trying to find window : " << windowName << endl;
+	    thisChannel->m_window = getWindowFromName(display, windowName.c_str());
 	    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY));
 		XFlush(display);
 		XSync(display, false);
 		    
 	}
-	cout << "Found window : " << thisChannel->m_window << endl;
 	
-	int xSlideOffset = 0;
-	int ySlideOffset= 0;
-
-	sleep(1);//TODO resize takes time?	
-    XResizeWindow(display, thisChannel->m_window , 128 + xSlideOffset*4, 128+ySlideOffset); //TODO set according to config of the screen
     XGetWindowAttributes(display, thisChannel->m_window, &gwa);
-    thisChannel->m_width  = gwa.width - xSlideOffset;
-    thisChannel->m_height = gwa.height - ySlideOffset * 2;
-	thisChannel->x_offset = xSlideOffset*2;
-	thisChannel->y_offset = ySlideOffset;
-	
-	sleep(4);//TODO resize takes time?
+    thisChannel->m_width  = gwa.width;
+    thisChannel->m_height = gwa.height;
+
 	thisChannel->m_started =  true;
-  
-		
 }
+
 
 void updateFixture(int channelIndex, unsigned char R, unsigned char G, unsigned char B)
 {
@@ -533,8 +437,19 @@ void startFixture(int channelIndex, int presetIndex) //TODO : refactor to have g
 	//TODO : get resolution from config
 	thisChannel->m_window = XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, 128, 128, 1, 0, 0);
 	XStoreName(display, thisChannel->m_window, "FIXTURE");
+	XSelectInput(display, thisChannel->m_window, StructureNotifyMask);
 	XMapWindow(display, thisChannel->m_window);
 
+
+      for(;;) {
+        XEvent e;
+        XNextEvent(display, &e);
+        cout << "received Xevent : " << e.type << endl;
+		if (e.type == MapNotify)
+          break;
+        
+	  }
+	   
 		
     XGetWindowAttributes(display, thisChannel->m_window, &gwa);
     thisChannel->m_width  = gwa.width;
@@ -543,11 +458,6 @@ void startFixture(int channelIndex, int presetIndex) //TODO : refactor to have g
 	Visual *visual=DefaultVisual(display, 0);
     XImage tempImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 0, 255));
 	
-	sleep(1);//TODO : need to find a way to sync with Window readiness
-	XSync(display, false);
-	XPutImage(display, thisChannel->m_window, DefaultGC(display, 0), &tempImage, 0, 0, 0, 0, tempImage.width, tempImage.height); 
-    cout << "image set in fixture init" << endl; 
-
 	thisChannel->m_started =  true;
 	
 	std::thread fixtureThread (runFixture);   
@@ -562,17 +472,15 @@ void startFixture(int channelIndex, int presetIndex) //TODO : refactor to have g
 
 int runNDIReceiver()
 {
-
-	
 	set_priority(SCHED_IDLE);
 
-int X = 640;
-int Y = 360;
-Window windowNDI=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, X, Y, 1, 0, 0);
-XStoreName(display, windowNDI, "NDI");
+	int X = 640;
+	int Y = 360;
+	Window windowNDI=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, X, Y, 1, 0, 0);
+	XStoreName(display, windowNDI, "NDI");
 
 
-Visual *visual2=DefaultVisual(display, 0);
+	Visual *visual2=DefaultVisual(display, 0);
 
       // We want to get MapNotify events
 
@@ -753,28 +661,14 @@ void startChannel(int index, MSChannelType channelType, int param)
 	}
 	switch(channelType){
 		case video :
-			cout << "setting up video channel" << endl;
-			startVideo(index, param);
-			break;
 		case visualizer:
-			cout << "setting up visualizer channel" << endl;
-			startProjectM(index, param);
-			break;
 		case image:
-			cout << "setting up image channel" << endl;
-			startImage(index, param);
-			break;	
-		case slideshow:
-			cout << "setting up slideshow channel" << endl;
-			startSlideshow(index, param);
+		case udp_stream:
+			startChannelType(channelType, index, param);
 			break;	
 		case fixture:
 			cout << "setting up fixture channel" << endl;
 			startFixture(index, param);
-			break;	
-		case udp_stream:
-			cout << "setting up UDP stream channel" << endl;
-			startUDPStream(index);
 			break;	
 		case ndi_stream:
 			cout << "setting up NDI stream channel" << endl;
@@ -862,11 +756,6 @@ void runOSCServer() {
 	  if (iarg >= 30 && iarg < 40)
 	  {
 	  	startChannel(CHANNEL_IMAGE_1, image, iarg - 30);
-	  	continue;
-	  }
-	  if (iarg >= 40 && iarg < 50)
-	  {
-	  	startChannel(CHANNEL_SLIDESWHOW_1, slideshow, iarg - 40);
 	  	continue;
 	  }
 	  if (iarg >= 50 && iarg < 60)
@@ -1106,6 +995,14 @@ int runMatrix()
 
 int main(int argc, char *argv[]) {
 
+channelToWindowName[CHANNEL_VISUALIZER_1] 	= "projectM"; 
+channelToWindowName[CHANNEL_IMAGE_1] 		= "gifview"; 
+channelToWindowName[CHANNEL_VIDEO_1] 		= "MPlayer"; 
+channelToWindowName[CHANNEL_IMAGE_1] 		= "gifview"; 
+channelToWindowName[CHANNEL_UDP_STREAM] 	= "UDP"; 
+	
+	
+	
 //RGB Matrix
   RGBMatrix::Options matrix_options;
   rgb_matrix::RuntimeOptions runtime_opt;
@@ -1165,6 +1062,8 @@ int main(int argc, char *argv[]) {
 Window window=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, 128, 128, 1, 0, 0);
 XStoreName(display, window, "VIRTUAL MS");
 XMapWindow(display, window);
+
+
 
 Visual *visual=DefaultVisual(display, 0);
 
