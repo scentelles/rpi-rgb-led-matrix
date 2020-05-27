@@ -144,7 +144,7 @@ XKeyEvent createKeyEvent(Display *display, Window &win,
 
 
 
-void set_realtime_priority() {
+void set_priority(int priority) {
      int ret;
  
      // We'll operate on the currently running thread.
@@ -156,14 +156,14 @@ void set_realtime_priority() {
      struct sched_param params;
  
      // We'll set the priority to the maximum.
-     params.sched_priority = sched_get_priority_max(SCHED_RR);
-  std::cout << "Trying to set thread realtime prio = " << params.sched_priority << std::endl;
+     params.sched_priority = sched_get_priority_max(priority);
+  std::cout << "Trying to set thread prio = " << params.sched_priority << std::endl;
  
-     // Attempt to set thread real-time priority to the SCHED_RR policy
-     ret = pthread_setschedparam(this_thread, SCHED_RR, &params);
+     // Attempt to set thread priority to the SCHED_RR policy
+     ret = pthread_setschedparam(this_thread, priority, &params);
      if (ret != 0) {
          // Print the error
-         std::cout << "Unsuccessful in setting thread realtime prio" << std::endl;
+         std::cout << "Unsuccessful in setting thread prio" << std::endl;
          return;     
      }
 
@@ -171,15 +171,15 @@ void set_realtime_priority() {
      int policy = 0;
      ret = pthread_getschedparam(this_thread, &policy, &params);
      if (ret != 0) {
-         std::cout << "Couldn't retrieve real-time scheduling paramers" << std::endl;
+         std::cout << "Couldn't retrieve scheduling paramers" << std::endl;
          return;
      }
  
      // Check the correct policy was applied
-     if(policy != SCHED_RR) {
-         std::cout << "Scheduling is NOT SCHED_RR!" << std::endl;
+     if(policy != priority) {
+         std::cout << "Scheduling is NOT !" << priority << std::endl;
      } else {
-         std::cout << "SCHED_RR OK" << std::endl;
+         std::cout << "Scheduling prio change OK" << priority << std::endl;
      }
  
      // Print thread scheduling priority
@@ -187,48 +187,6 @@ void set_realtime_priority() {
 }
 
 
-
-void set_low_priority() {
-     int ret;
- 
-     // We'll operate on the currently running thread.
-     pthread_t this_thread = pthread_self();
-
-
-
-     // struct sched_param is used to store the scheduling priority
-     struct sched_param params;
- 
-     // We'll set the priority to the maximum.
-     params.sched_priority = sched_get_priority_max(SCHED_IDLE);
-  std::cout << "Trying to set thread realtime prio = " << params.sched_priority << std::endl;
- 
-     // Attempt to set thread real-time priority to the SCHED_IDLE policy
-     ret = pthread_setschedparam(this_thread, SCHED_IDLE, &params);
-     if (ret != 0) {
-         // Print the error
-         std::cout << "Unsuccessful in setting thread realtime prio" << std::endl;
-         return;     
-     }
-
- // Now verify the change in thread priority
-     int policy = 0;
-     ret = pthread_getschedparam(this_thread, &policy, &params);
-     if (ret != 0) {
-         std::cout << "Couldn't retrieve real-time scheduling paramers" << std::endl;
-         return;
-     }
- 
-     // Check the correct policy was applied
-     if(policy != SCHED_IDLE) {
-         std::cout << "Scheduling is NOT SCHED_IDLE!" << std::endl;
-     } else {
-         std::cout << "SCHED_IDLE OK" << std::endl;
-     }
- 
-     // Print thread scheduling priority
-     std::cout << "Thread priority is " << params.sched_priority << std::endl; 
-}
 
 
 Window *getWindowList(Display *disp, unsigned long *len) {
@@ -606,8 +564,8 @@ int runNDIReceiver()
 {
 
 	
-	set_low_priority();
-	//set_realtime_priority();
+	set_priority(SCHED_IDLE);
+
 int X = 640;
 int Y = 360;
 Window windowNDI=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, X, Y, 1, 0, 0);
@@ -1133,23 +1091,16 @@ void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 
 int runMatrix()
 {
-set_realtime_priority();
+	set_priority(SCHED_FIFO);
 
+	int vsync_multiple = 1;
+	offscreen_canvas = matrix->CreateFrameCanvas();
 
-	  int vsync_multiple = 1;
-offscreen_canvas = matrix->CreateFrameCanvas();
-		while(1)
+	while(!interrupt_received)
 		{
-			
-			
-        offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
-                                                	   vsync_multiple);
+			offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas, vsync_multiple);
 		}
 }
-
-
-
-
 
 
 
