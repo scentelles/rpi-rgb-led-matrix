@@ -108,7 +108,7 @@ MegaScreenChannel MegaScreenChannelArray[NB_MAX_CHANNEL];
 	Window winRoot = 0;
 	
 	RGBMatrix *matrix;
-
+FrameCanvas *offscreen_canvas;
 
 
         XWindowAttributes gwa;
@@ -608,8 +608,8 @@ int runNDIReceiver()
 	
 	set_low_priority();
 	//set_realtime_priority();
-int X = 512;
-int Y = 288;
+int X = 640;
+int Y = 360;
 Window windowNDI=XCreateSimpleWindow(display, RootWindow(display, 0), 0, 0, X, Y, 1, 0, 0);
 XStoreName(display, windowNDI, "NDI");
 
@@ -701,20 +701,17 @@ int a;
 				//printf("Frame fourCC : %d\n", video_frame.FourCC);
 				
 				//printf("going thru loop width : %d\n", finalImage.width);
-				for(int x = 0; x < finalImage.width; x++)
+				for(int x = 0; x < video_frame.xres; x++)
 				{
-					for(int y = 0; y < finalImage.height; y++)
+					for(int y = 0; y < video_frame.yres; y++)
 					{
 						//printf ("x : %d, y : %d", x, y);
 						//int indexB = (y*finalImage.width + x)*2+1;
-					    int indexB = (y*finalImage.width + x)*4;
-					    int indexG = (y*finalImage.width + x)*4 + 1;
- 					    int indexR = (y*finalImage.width + x)*4 + 2;
+					    int indexB = (y*video_frame.xres + x)*4;
+					    int indexG = (y*video_frame.xres + x)*4 + 1;
+ 					    int indexR = (y*video_frame.xres + x)*4 + 2;
 
 									XColor colors;
-									unsigned long red_mask   = finalImage.red_mask;
-									unsigned long green_mask = finalImage.green_mask;
-									unsigned long blue_mask  = finalImage.blue_mask;						
 										  
 									unsigned char B1 = data[indexB];
 								    //unsigned char G1 = 0;
@@ -1136,10 +1133,76 @@ void blendImage(XImage * inputImage, float alpha, XImage * outputImage)
 
 int runMatrix()
 {
-
 set_realtime_priority();
+
+
+	  int vsync_multiple = 1;
+offscreen_canvas = matrix->CreateFrameCanvas();
+		while(1)
+		{
+			
+			
+        offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
+                                                	   vsync_multiple);
+		}
+}
+
+
+
+
+
+
+
+int main(int argc, char *argv[]) {
+
+//RGB Matrix
+  RGBMatrix::Options matrix_options;
+  rgb_matrix::RuntimeOptions runtime_opt;
+  if (!rgb_matrix::ParseOptionsFromFlags(&argc, &argv,
+                                         &matrix_options, &runtime_opt)) {
+    return usage(argv[0]);
+  }
+
+
+
+  int opt;
+  while ((opt = getopt(argc, argv, "vO:R:Lfc:s:FV:")) != -1) {
+    switch (opt) {
+    default:
+      return usage(argv[0]);
+    }
+  }
+
+
+
+  matrix = CreateMatrixFromOptions(matrix_options, runtime_opt);
+  if (matrix == NULL) {
+    return 1;
+  }
 	
-  FrameCanvas *offscreen_canvas = matrix->CreateFrameCanvas();
+	
+	
+	//Required as multiple thread will acces X
+	XInitThreads();
+
+
+
+//X11 related
+
+  display = XOpenDisplay(0);
+  winRoot = XDefaultRootWindow(display);
+  XSetErrorHandler( catcher ); 
+	
+
+//Start OSC server
+  std::thread ocsThread (runOSCServer);     
+  ocsThread.detach();
+  
+//Start MATRIX loop
+  std::thread matrixThread (runMatrix);  
+  matrixThread.detach();
+
+
 
 
   signal(SIGTERM, InterruptHandler);
@@ -1159,7 +1222,7 @@ XImage whiteImage = *(CreateColorImage(display, visual, 0, 128, 128, 255, 255, 2
 XImage finalImage = blackImage; //TODO get resolution from config
 
 
-  int vsync_multiple = 1;
+
   
   	int count = 0;
 //Main loop
@@ -1263,9 +1326,7 @@ XImage finalImage = blackImage; //TODO get resolution from config
 
 	}
 
-	
-        offscreen_canvas = matrix->SwapOnVSync(offscreen_canvas,
-                                                	   vsync_multiple);
+
 													   
 
 	    
@@ -1290,68 +1351,6 @@ XImage finalImage = blackImage; //TODO get resolution from config
   }
 
   delete matrix;
-}
-
-
-
-
-
-
-
-int main(int argc, char *argv[]) {
-
-//RGB Matrix
-  RGBMatrix::Options matrix_options;
-  rgb_matrix::RuntimeOptions runtime_opt;
-  if (!rgb_matrix::ParseOptionsFromFlags(&argc, &argv,
-                                         &matrix_options, &runtime_opt)) {
-    return usage(argv[0]);
-  }
-
-
-
-  int opt;
-  while ((opt = getopt(argc, argv, "vO:R:Lfc:s:FV:")) != -1) {
-    switch (opt) {
-    default:
-      return usage(argv[0]);
-    }
-  }
-
-
-
-  matrix = CreateMatrixFromOptions(matrix_options, runtime_opt);
-  if (matrix == NULL) {
-    return 1;
-  }
-	
-	
-	
-	//Required as multiple thread will acces X
-	XInitThreads();
-
-
-
-//X11 related
-
-  display = XOpenDisplay(0);
-  winRoot = XDefaultRootWindow(display);
-  XSetErrorHandler( catcher ); 
-	
-
-//Start OSC server
-  std::thread ocsThread (runOSCServer);     
-  ocsThread.detach();
-  
-//Start MATRIX loop
-  std::thread matrixThread (runMatrix);  
-  matrixThread.detach();
-
-  while(1)
-  {
-	  sleep(1);
-  }
-  
 
   return 0;
 }
